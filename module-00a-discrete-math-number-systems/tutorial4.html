@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00a — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 00a — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version — long on purpose. By the end you should
+be able to convert any number between bases by hand without a calculator,
+explain bitwise operations bit-by-bit on demand, trace a modular
+exponentiation calculation step by step, and narrate a full
+Diffie-Hellman exchange (including what an eavesdropper does and doesn't
+learn) as a story, not a formula you memorized.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">What a "number base" actually means — positional notation from zero</a></li>
+<li><a href="#sec2">Binary, worked from first principles, many examples</a></li>
+<li><a href="#sec3">Hexadecimal and the 4-bits-per-digit shortcut, many examples</a></li>
+<li><a href="#sec4">Bitwise AND, OR, XOR, NOT — one at a time, with networking scenarios</a></li>
+<li><a href="#sec5">Modular arithmetic — from clock faces to cryptography</a></li>
+<li><a href="#sec6">Fast modular exponentiation — traced step by step</a></li>
+<li><a href="#sec7">Diffie-Hellman — the full story, with Eve watching</a></li>
+<li><a href="#sec8">The floating-point bug — why it happened and what it teaches</a></li>
+<li><a href="#sec9">Full code walkthrough — number_systems.py</a></li>
+<li><a href="#sec10">Full code walkthrough — modular_arithmetic.py</a></li>
+<li><a href="#sec11">Troubleshooting and common confusions</a></li>
+<li><a href="#sec12">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. What a "Number Base" Actually Means — Positional Notation From Zero</h2>
+
+<p>Before touching binary or hex, get completely solid on WHY decimal
+(base 10) works the way it does — everything else is the identical idea
+with a different base.</p>
+
+<p>When you write <code>253</code>, you are not writing "two, five,
+three" as three independent symbols. You are writing a POSITIONAL
+number: each digit's value depends on WHERE it sits, not just what
+symbol it is. Specifically:</p>
+<pre>   253  =  2×10² + 5×10¹ + 3×10⁰
+        =  2×100 + 5×10  + 3×1
+        =  200   + 50    + 3
+        =  253</pre>
+<p>The base (10, here) determines two things simultaneously: how many
+distinct DIGIT SYMBOLS exist (0 through 9 — exactly 10 symbols for base
+10), and what each POSITION is worth (powers of the base, right to
+left: base⁰, base¹, base², ...).</p>
+
+<div class="brain">
+<strong>Brain power:</strong> why do we use base 10 for everyday counting
+at all? Purely a historical/biological accident — 10 fingers. There is
+NOTHING mathematically special about base 10; it's simply the base
+human civilization happened to standardize on. Computers, having no
+fingers, use base 2 (binary) because it maps directly onto the ONE
+physical distinction electronic circuits can reliably represent: a
+voltage is either above a threshold (1) or below it (0) — no natural
+electronic component reliably represents 10 distinct voltage levels the
+way a decimal digit would require.
+</div>
+
+<p>Binary (base 2) and hexadecimal (base 16) work by the EXACT same
+positional principle, just with a different base:</p>
+<table>
+<tr><th>Base</th><th>Name</th><th>Digit symbols</th><th>Position values (right to left)</th></tr>
+<tr><td>2</td><td>Binary</td><td>0, 1</td><td>...2³, 2², 2¹, 2⁰ = ...8, 4, 2, 1</td></tr>
+<tr><td>10</td><td>Decimal</td><td>0–9</td><td>...10³, 10², 10¹, 10⁰ = ...1000, 100, 10, 1</td></tr>
+<tr><td>16</td><td>Hexadecimal</td><td>0–9, then a–f for 10–15</td><td>...16³, 16², 16¹, 16⁰ = ...4096, 256, 16, 1</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does hex need letters a–f at all?</strong> A single hex digit
+must be able to represent 16 distinct values (0 through 15), but we only
+have 10 decimal digit symbols. Rather than invent brand-new symbols, hex
+reuses 0–9 for the first ten values and borrows the first six letters of
+the alphabet (a=10, b=11, c=12, d=13, e=14, f=15) for the rest — a
+notational convenience, not a mathematical requirement. Any 16 distinct
+symbols would work equally well; letters were simply the most obvious
+choice already sitting on every keyboard.
+</div>
+
+<h2 id="sec2">2. Binary, Worked From First Principles, Many Examples</h2>
+
+<h3>2.1 — Converting decimal to binary: the division algorithm</h3>
+<p><code>decimal_to_binary()</code> in this module's own code uses
+REPEATED DIVISION BY 2, keeping the remainders. This is not arbitrary —
+it's the direct algorithmic consequence of positional notation. Walk
+through converting 13, fully:</p>
+<pre>13 ÷ 2 = 6 remainder 1   (this remainder is the RIGHTMOST/LAST bit — the 2⁰ place)
+ 6 ÷ 2 = 3 remainder 0
+ 3 ÷ 2 = 1 remainder 1
+ 1 ÷ 2 = 0 remainder 1   (this remainder is the LEFTMOST/FIRST bit — stop when the quotient hits 0)
+
+Read the remainders BOTTOM TO TOP: 1101
+
+Check: 1101 = 1×8 + 1×4 + 0×2 + 1×1 = 8+4+0+1 = 13 ✓</pre>
+
+<div class="scenario">
+<h4>Worked scenario: convert 200 to binary, fully shown</h4>
+<pre>200 ÷ 2 = 100 remainder 0
+100 ÷ 2 =  50 remainder 0
+ 50 ÷ 2 =  25 remainder 0
+ 25 ÷ 2 =  12 remainder 1
+ 12 ÷ 2 =   6 remainder 0
+  6 ÷ 2 =   3 remainder 0
+  3 ÷ 2 =   1 remainder 1
+  1 ÷ 2 =   0 remainder 1
+
+Read bottom to top: 11001000
+
+Check: 128+64+0+0+8+0+0+0 = 200 ✓  (128=2⁷, 64=2⁶, 8=2³)</pre>
+<p>This is exactly the algorithm inside <code>number_systems.py</code>'s
+<code>decimal_to_binary()</code> — <code>digits.append(str(n % 2))</code>
+captures each remainder, <code>n //= 2</code> performs the integer
+division, and <code>reversed(digits)</code> flips the collected
+remainders back into the correct reading order, because they were
+collected LAST-BIT-FIRST but need to be READ first-bit-first.</p>
+</div>
+
+<h3>2.2 — Converting binary to decimal: place-value expansion</h3>
+<p>The reverse direction is even more directly "positional notation,"
+with no algorithm trick needed beyond the definition itself — multiply
+each bit by its position's power of 2, and sum.</p>
+<div class="scenario">
+<h4>Worked scenario: convert 11000000 to decimal (this is exactly a Module 04 subnet mask octet)</h4>
+<pre>Position (right to left, starting at 0):  7 6 5 4 3 2 1 0
+Bit:                                       1 1 0 0 0 0 0 0
+Position value (2^position):             128 64 32 16 8 4 2 1
+
+Only positions 7 and 6 have a 1:
+  1×128 + 1×64 + 0+0+0+0+0+0 = 192
+
+11000000 binary = 192 decimal</pre>
+<p>This exact byte, 192 (binary <code>11000000</code>), is the FIRST
+octet of the subnet mask <code>255.255.255.192</code> — a /26 mask,
+exactly the one used in this module's own
+<code>show_subnet_mask_as_and()</code> demo and in Module 04's core
+material. Recognizing "192 in binary has exactly its top 2 bits set" on
+sight, without recomputing it every time, is a genuinely practical skill
+— experienced network engineers memorize the 9 "interesting" subnet mask
+octet values (0, 128, 192, 224, 240, 248, 252, 254, 255) specifically
+because they correspond to exactly 0 through 8 leading 1-bits.</p>
+</div>
+
+<h3>2.3 — Why "255" is the largest single-octet value, and why that boundary matters everywhere</h3>
+<p>An 8-bit binary number (a byte) has exactly 2⁸ = 256 possible distinct
+values — 0 through 255. This single fact is WHY every IPv4 octet
+(Module 01, Module 04) tops out at 255, why a single byte in any
+protocol header (Module 02's struct packing) can represent exactly 256
+distinct states, and why <code>XOR_KEY</code> values in Module 20's
+obfuscation work range from 0x00 to 0xFF (0 to 255 in hex). This one
+number — 256 — recurs constantly throughout this entire course
+specifically because bytes are the fundamental unit almost everything
+in networking and computing is built from.</p>
+
+<h2 id="sec3">3. Hexadecimal and the 4-Bits-Per-Digit Shortcut, Many Examples</h2>
+
+<h3>3.1 — Why hex specifically, and why 4 bits maps so cleanly</h3>
+<p>16 = 2⁴. This single fact is the entire reason hex is useful to
+programmers and network engineers at all: EVERY group of exactly 4
+binary digits maps to EXACTLY one hex digit, with no leftover or
+awkward fractional mapping — unlike, say, converting binary to decimal,
+which has no such clean grouping. This means you can convert between
+binary and hex almost instantly, by memorizing 16 four-bit patterns,
+without ever going through decimal at all.</p>
+
+<table>
+<tr><th>Binary (4 bits)</th><th>Hex digit</th><th>Binary (4 bits)</th><th>Hex digit</th></tr>
+<tr><td>0000</td><td>0</td><td>1000</td><td>8</td></tr>
+<tr><td>0001</td><td>1</td><td>1001</td><td>9</td></tr>
+<tr><td>0010</td><td>2</td><td>1010</td><td>a</td></tr>
+<tr><td>0011</td><td>3</td><td>1011</td><td>b</td></tr>
+<tr><td>0100</td><td>4</td><td>1100</td><td>c</td></tr>
+<tr><td>0101</td><td>5</td><td>1101</td><td>d</td></tr>
+<tr><td>0110</td><td>6</td><td>1110</td><td>e</td></tr>
+<tr><td>0111</td><td>7</td><td>1111</td><td>f</td></tr>
+</table>
+
+<div class="scenario">
+<h4>Worked scenario: convert 11111111 to hex using ONLY the grouping shortcut (no decimal step)</h4>
+<pre>11111111 splits into two groups of 4: 1111 | 1111
+1111 = f  (from the table: 8+4+2+1 = 15 = f)
+1111 = f
+
+Result: 0xff
+
+Sanity check via decimal: 11111111 = 255 decimal, and 255 = 15×16 + 15 = 0xff ✓</pre>
+<p>This exact byte, <code>0xff</code>, is why you constantly see
+<code>255.255.255.0</code> subnet masks written elsewhere in networking
+tooling as <code>0xffffff00</code> — same 32-bit value, different
+notation, and now you can convert between them by sight.</p>
+</div>
+
+<div class="scenario">
+<h4>Worked scenario: a MAC address octet, 10101010, converted for real</h4>
+<pre>10101010 splits into: 1010 | 1010
+1010 = a  (8+0+2+0 = 10 = a)
+1010 = a
+
+Result: 0xaa
+
+This is EXACTLY the byte number_systems.py's own main() demonstrates
+(the third example, binary "10101010"), and 0xaa/0x55 alternating
+patterns show up constantly in real networking as "obviously
+alternating bit" test patterns -- worth recognizing on sight.</pre>
+</div>
+
+<h3>3.2 — Padding: why you must pad LEFT before grouping</h3>
+<p><code>binary_to_hex_by_grouping()</code>'s first line —
+<code>padded = b.rjust((len(b) + 3) // 4 * 4, "0")</code> — pads the
+binary string with leading zeros until its length is a multiple of 4,
+BEFORE splitting into groups. This matters because grouping from the
+WRONG end silently produces a wrong answer.</p>
+<div class="pitfall">
+<strong>Common mistake: grouping from the right without padding correctly first, on an odd-length input.</strong>
+Take <code>101</code> (decimal 5, only 3 bits). Grouping naively without
+padding might give you a single group <code>101</code> — but a hex digit
+needs exactly 4 bits, not 3. The correct approach pads on the LEFT
+first: <code>0101</code> — THEN groups: <code>0101 = 5</code>. Padding on
+the wrong side, or forgetting to pad at all, is the single most common
+by-hand conversion mistake — always pad the FULL binary string on the
+LEFT to a multiple of 4 before splitting into groups, never split first
+and pad the leftover group separately (which can silently shift which
+bits belong to which digit).
+</div>
+
+<h2 id="sec4">4. Bitwise AND, OR, XOR, NOT — One At A Time, With Networking Scenarios</h2>
+
+<h3>4.1 — AND: "both must be 1"</h3>
+<pre>  1 0 1 1
+& 1 1 0 1
+---------
+  1 0 0 1   (each position: 1 only if BOTH inputs were 1)</pre>
+<div class="scenario">
+<h4>Where you already used this: subnet masking (Module 01 Section 4, Module 04's entire mechanism)</h4>
+<p>AND is used specifically because it acts as a SELECTIVE MASK — ANDing
+any bit with 1 preserves that bit's original value; ANDing any bit with
+0 forces it to 0, regardless of what it originally was. A subnet mask's
+1-bits (the network portion) "pass through" the IP address's real bits
+unchanged; the mask's 0-bits (the host portion) get FORCED to 0,
+zeroing out exactly the host-specific part and leaving exactly the
+network address behind. This is precisely why AND — and not OR or XOR —
+is the correct operation for this job: it's the only one of the three
+that can selectively "let some bits through unchanged while zeroing
+others," which is exactly what extracting a network address requires.</p>
+</div>
+
+<h3>4.2 — OR: "either can be 1"</h3>
+<pre>  1 0 1 1
+| 1 1 0 1
+---------
+  1 1 1 1   (each position: 1 if EITHER input was 1)</pre>
+<div class="scenario">
+<h4>Where OR shows up: computing a broadcast address</h4>
+<p>Given a network address and its subnet mask, the BROADCAST address
+(the special "everyone on this subnet" address, mentioned in Module 01
+Section 4.1) is computed by taking the network address and setting
+EVERY host bit to 1 — which is exactly OR-ing the network address
+against the INVERTED mask (all the host-portion bit positions). For
+<code>192.168.1.64/26</code> (network address, host bits = last 6 bits
+of the last octet), OR-ing in all 1s for those 6 bit positions gives
+<code>192.168.1.127</code> — the broadcast address for that specific
+/26 subnet, matching exactly the number Module 01's worked scenario 2
+already computed.</p>
+</div>
+
+<h3>4.3 — XOR: "exactly one, not both"</h3>
+<pre>  1 0 1 1
+^ 1 1 0 1
+---------
+  0 1 1 0   (each position: 1 only if the inputs DIFFER)</pre>
+<div class="scenario">
+<h4>Where XOR shows up: Module 20's obfuscation, and WHY it's reversible</h4>
+<p>XOR has one property no other basic bitwise operator has: applying
+the SAME XOR operation TWICE with the SAME key returns you to the
+original value. <code>a XOR key XOR key = a</code>, always, for any
+values. This is EXACTLY the mechanism Module 20's <code>beacon_demo.c</code>
+uses: <code>obfuscated_target[i] = plaintext[i] XOR key</code> to hide a
+string, then <code>plaintext[i] = obfuscated_target[i] XOR key</code>
+(the SAME operation again) to recover it. Trace it through with real
+bits:</p>
+<pre>plaintext byte:     01000001   ('A', decimal 65)
+XOR key:             01011010   (0x5a)
+-------------------------------
+obfuscated:          00011011   (0x1b -- looks like noise)
+
+obfuscated:          00011011
+XOR key (again):     01011010
+-------------------------------
+recovered:           01000001   ('A' again -- back to the original!)</pre>
+<p>This reversibility is WHY a single-byte XOR key has such a small,
+brute-forceable keyspace (Module 20's deep theory covers this precisely):
+since decoding is IDENTICAL to encoding (just XOR with the same key
+again), an attacker who doesn't know the key can simply try every
+possible key (all 255 non-zero single-byte values) and check whether any
+result looks like meaningful text — which is EXACTLY what
+<code>string_deobfuscator.py</code> does.</p>
+</div>
+
+<h3>4.4 — NOT: flipping every bit</h3>
+<pre>NOT 10110100
+  = 01001011   (every 1 becomes 0, every 0 becomes 1)</pre>
+<div class="why">
+<strong>Why does computing a broadcast address use "invert the mask" as a
+step (Section 4.2)?</strong> The subnet mask's 1-bits mark the NETWORK
+portion; its 0-bits mark the HOST portion. To operate specifically on
+the host portion (setting every host bit to 1 for a broadcast address),
+you need a version of the mask with the 0s and 1s SWAPPED — exactly what
+NOT produces. This chain — invert the mask, then OR it against the
+network address — is a real, standard technique appearing in actual
+subnet-calculation code (including Module 04's own subnet calculator).
+</div>
+
+<h2 id="sec5">5. Modular Arithmetic — From Clock Faces To Cryptography</h2>
+
+<h3>5.1 — The clock-face intuition, made completely explicit</h3>
+<p>You already do modular arithmetic constantly without naming it: if
+it's 9 o'clock and 5 hours pass, you don't say "14 o'clock" — you say
+"2 o'clock." You have, without thinking about it, computed
+<code>(9 + 5) mod 12 = 2</code>. The <code>mod</code> operator (read
+"modulo") means "the remainder after dividing by this number" — and a
+clock face is a physical embodiment of "count up, but wrap back to 0 (or
+1, for clocks) once you hit 12."</p>
+
+<div class="scenario">
+<h4>Worked scenario: three different modulus values, same underlying idea</h4>
+<pre>17 mod 5  = 2    (17 = 3×5 + 2 -- 3 full groups of 5, remainder 2)
+100 mod 7 = 2    (100 = 14×7 + 2 -- 14 full groups of 7, remainder 2)
+8 mod 8   = 0    (8 = 1×8 + 0 -- exactly one full group, no remainder)</pre>
+<p>Notice the third example: when a number is EXACTLY divisible by the
+modulus, the result is 0 — this "wraps exactly back to the start" case
+is precisely what happens when a TCP sequence number (Module 07) wraps
+past its maximum 32-bit value and rolls back to 0, or when this module's
+own <code>clock_arithmetic_demo()</code> notes that a TTL, if nothing
+stopped it, would wrap mod 256 the same way a byte does.</p>
+</div>
+
+<h3>5.2 — Why cryptography specifically needs modular arithmetic</h3>
+<p>Real cryptographic operations (RSA, Diffie-Hellman) work with numbers
+hundreds of digits long. Without taking a modulus at each step, these
+numbers would grow astronomically — genuinely too large for any computer
+to store or compute with in reasonable time. Modular arithmetic's key
+property (proven formally, but usable here without full proof) is that
+you can take the modulus AFTER EVERY intermediate multiplication step,
+rather than only once at the very end, and get the IDENTICAL final
+answer as if you'd computed the full, enormous number first and taken
+the modulus only once. This property is what makes Section 6's fast
+exponentiation algorithm possible at all.</p>
+
+<h2 id="sec6">6. Fast Modular Exponentiation — Traced Step By Step</h2>
+
+<p>This is the single most important algorithm in this entire module —
+it's what makes real cryptography (RSA, Diffie-Hellman, and by extension
+everything TLS does in Module 13) computationally FEASIBLE at all. Trace
+<code>mod_exp(7, 128, 13)</code> — computing 7¹²⁸ mod 13 — completely, by
+hand, exactly as <code>modular_arithmetic.py</code>'s own
+<code>mod_exp()</code> function would execute it.</p>
+
+<h3>6.1 — Why the naive approach fails in practice</h3>
+<p>The NAIVE approach — compute 7¹²⁸ fully, THEN take mod 13 — requires
+computing a number with (as this module's own output literally states)
+over 100 digits, before you can even start reducing it. For REAL
+cryptographic exponents (hundreds of digits long, not just 128), the
+naive approach would require storing and multiplying numbers with more
+digits than atoms in the observable universe. This is not an
+exaggeration — it's why <code>naive_mod_exp()</code> exists ONLY as a
+verification tool for small numbers in this module, explicitly marked as
+infeasible for real use.</p>
+
+<h3>6.2 — The fast algorithm's trick: square-and-multiply</h3>
+<p>The key insight: exponentiation by repeated multiplication is
+wasteful (7¹²⁸ as 128 separate multiplications), but you can compute ANY
+power using only about log₂(exponent) multiplications by repeatedly
+SQUARING and only multiplying in the base when a bit of the exponent
+(in binary!) is set. Notice: this directly reuses Section 2's binary
+representation — the exponent's OWN binary form drives the algorithm.</p>
+
+<div class="scenario">
+<h4>Fully traced: mod_exp(base=7, exponent=128, modulus=13)</h4>
+<p>First, 128 in binary (Section 2's algorithm): 128 = 10000000 (exactly
+one bit set, at position 7 — makes sense, since 128 = 2⁷ exactly).</p>
+<p>The algorithm's loop (from the real source code):</p>
+<pre>result = 1
+base = 7 % 13 = 7
+exponent = 128
+
+Iteration 1: exponent=128 (even, bit=0 -- skip multiplying into result)
+  base = (7 * 7) % 13 = 49 % 13 = 10
+  exponent = 128 // 2 = 64
+
+Iteration 2: exponent=64 (even, bit=0 -- skip)
+  base = (10 * 10) % 13 = 100 % 13 = 9
+  exponent = 64 // 2 = 32
+
+Iteration 3: exponent=32 (even, bit=0 -- skip)
+  base = (9 * 9) % 13 = 81 % 13 = 3
+  exponent = 32 // 2 = 16
+
+Iteration 4: exponent=16 (even, bit=0 -- skip)
+  base = (3 * 3) % 13 = 9 % 13 = 9
+  exponent = 16 // 2 = 8
+
+Iteration 5: exponent=8 (even, bit=0 -- skip)
+  base = (9 * 9) % 13 = 81 % 13 = 3
+  exponent = 8 // 2 = 4
+
+Iteration 6: exponent=4 (even, bit=0 -- skip)
+  base = (3 * 3) % 13 = 9 % 13 = 9
+  exponent = 4 // 2 = 2
+
+Iteration 7: exponent=2 (even, bit=0 -- skip)
+  base = (9 * 9) % 13 = 81 % 13 = 3
+  exponent = 2 // 2 = 1
+
+Iteration 8: exponent=1 (ODD, bit=1 -- MULTIPLY into result!)
+  result = (1 * 3) % 13 = 3
+  base = (3 * 3) % 13 = 9
+  exponent = 1 // 2 = 0  -- loop ends
+
+Final result: 3</pre>
+<p>Only 8 iterations, each involving numbers that never exceed roughly
+13×13=169 — never anything close to a 100-digit number — to correctly
+compute 7¹²⁸ mod 13 = 3. This is the entire reason real-world RSA
+(with exponents hundreds of digits long, in binary meaning hundreds of
+loop iterations, each working with numbers no larger than the modulus
+itself) completes in milliseconds rather than requiring more storage
+than exists in the observable universe.</p>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain why square-and-multiply
+modular exponentiation has O(log n) multiplications rather than O(n),
+where n is the exponent." Each loop iteration HALVES the remaining
+exponent (<code>exponent //= 2</code>) regardless of whether that
+iteration's bit was 0 or 1 — this is exactly the same "repeatedly halve"
+structure as binary search's logarithmic time complexity. An exponent
+with B bits requires exactly B iterations (one per bit), and B = log₂(n)
+by definition of what "number of bits" means — hence O(log n)
+multiplications instead of the naive approach's O(n) multiplications
+(literally n-1 multiplications to compute base^n by repeated
+multiplication one factor at a time).
+</div>
+
+<h2 id="sec7">7. Diffie-Hellman — The Full Story, With Eve Watching</h2>
+
+<p>This is the payoff of everything above. Walk through the ENTIRE
+exchange this module's own <code>diffie_hellman_demo()</code> performs,
+narrated as a story with a THIRD character — Eve, an eavesdropper who
+can see every single message Alice and Bob exchange, but cannot see
+their private thoughts (their private numbers).</p>
+
+<div class="scenario">
+<h4>The full story</h4>
+<p><strong>Setup (public, Eve sees this too):</strong> Alice and Bob
+publicly agree on a prime <code>p=23</code> and a generator
+<code>g=5</code> — sent in the clear, over a channel Eve is actively
+monitoring. Eve now knows p=23 and g=5. This is fine — these values
+being public is not a weakness; the security doesn't depend on them
+being secret.</p>
+
+<p><strong>Step 1 — private numbers (Eve does NOT see these):</strong>
+Alice privately picks <code>a=6</code>. Bob privately picks
+<code>b=15</code>. Neither number is ever transmitted anywhere, in any
+form. Eve has no way to observe these at all — they exist only inside
+Alice's and Bob's own heads/computers.</p>
+
+<p><strong>Step 2 — public values (Eve DOES see these):</strong> Alice
+computes <code>A = g^a mod p = 5^6 mod 23 = 8</code> and SENDS 8 to Bob.
+Bob computes <code>B = g^b mod p = 5^15 mod 23 = 19</code> and SENDS 19
+to Alice. Eve now has intercepted: p=23, g=5, A=8, B=19. This is
+EVERYTHING Eve will ever see. Notice: Eve has NOT seen 6 or 15
+anywhere — only their transformed public results.</p>
+
+<p><strong>Step 3 — the shared secret (Eve cannot compute this):</strong>
+Alice takes Bob's PUBLIC value and raises it to HER OWN private power:
+<code>B^a mod p = 19^6 mod 23</code>. Bob takes Alice's PUBLIC value and
+raises it to HIS OWN private power: <code>A^b mod p = 8^15 mod 23</code>.
+Remarkably (this is the actual mathematical magic, provable via modular
+exponentiation's algebraic properties: <code>(g^a)^b mod p = (g^b)^a mod
+p = g^(ab) mod p</code> — exponentiation is commutative under a modulus
+this way), BOTH compute the SAME number: 2.</p>
+
+<p><strong>Why can't Eve compute this too?</strong> Eve has p, g, A=8,
+B=19 — everything Alice and Bob ever transmitted. To compute the shared
+secret the way Alice or Bob did, Eve would need EITHER Alice's private
+<code>a</code> OR Bob's private <code>b</code> — neither of which was
+ever sent. Eve's only path would be to work BACKWARD from a PUBLIC value
+(say, A=8) to recover the PRIVATE exponent that produced it — i.e.,
+given <code>g^a mod p = 8</code>, find <code>a</code>. This is called
+the DISCRETE LOGARITHM PROBLEM, and — this is the entire security
+foundation of Diffie-Hellman — for a sufficiently large prime <code>p</code>
+(hundreds of digits, unlike this toy example's p=23), no known efficient
+algorithm can solve it in a practical amount of time. Eve is not
+missing a clever trick; she is facing a problem believed to be
+COMPUTATIONALLY INFEASIBLE at real cryptographic sizes.</p>
+</div>
+
+<div class="pitfall">
+<strong>Why p=23 specifically is NOT secure, and why that's fine for
+THIS demo:</strong> with such a tiny prime, Eve absolutely COULD brute
+force the discrete log problem — there are only 23 possible values to
+try. This module's own code says so explicitly in a comment: "toy-sized
+for teaching, not remotely secure." Real Diffie-Hellman as used in TLS
+(Module 13) uses primes with hundreds of digits, making brute-force
+search as infeasible as the AES-256 keyspace comparison Module 20's
+theory covers. The MATH demonstrated here (the mechanism) is identical
+between the toy version and the real version — only the SIZE of the
+numbers differs, and that size difference is the entire security margin.
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "What, precisely, does an
+eavesdropper on a Diffie-Hellman exchange learn, and what do they
+provably NOT learn?" A precise answer separates these exactly: Eve
+learns p, g, and BOTH public values (g^a mod p and g^b mod p) — full
+visibility into everything transmitted. Eve does NOT learn either
+private exponent, and does NOT learn the shared secret itself, PROVIDED
+the discrete logarithm problem is computationally infeasible for the
+chosen prime size — this proviso is not a technicality, it's the entire
+basis of the scheme's security, which is why real-world DH implementations
+insist on prime sizes large enough that discrete-log solving remains
+infeasible with current and foreseeable computing power.
+</div>
+
+<h2 id="sec8">8. The Floating-Point Bug — Why It Happened And What It Teaches</h2>
+
+<p>This module's own build hit a real bug worth understanding completely,
+not just noting in passing. The JavaScript self-test's FIRST version
+used <code>Math.pow()</code> to independently verify <code>mod_exp()</code>'s
+results — and failed 46 out of 50 trials.</p>
+
+<h3>8.1 — What actually went wrong, mechanically</h3>
+<p>JavaScript's <code>number</code> type is a 64-bit IEEE 754
+floating-point value — the SAME representation used for numbers with
+decimal points, even when the value being stored is a whole integer.
+This representation can exactly represent integers only up to
+2⁵³ (about 9 quadrillion) — beyond that, it must ROUND to the nearest
+representable value, silently losing precision. <code>1000^40</code> is
+a number with roughly 120 digits — astronomically larger than 2⁵³.
+<code>Math.pow(1000, 40)</code> doesn't crash or error — it silently
+returns an APPROXIMATE value, close in magnitude but wrong in its exact
+digits, which is precisely the kind of bug that's dangerous specifically
+because it looks like it's working.</p>
+
+<h3>8.2 — Why Python didn't have this problem</h3>
+<p>Python's native <code>int</code> type has ARBITRARY PRECISION built
+in from the start — it automatically grows to however many digits are
+needed, with no silent rounding, ever. This is a genuine, real language
+design difference (not a bug in either language) — Python chose
+arbitrary-precision integers as its default; JavaScript's ONLY numeric
+type historically was the same floating-point type used for
+non-integers, inheriting float's precision limits even for whole-number
+arithmetic.</p>
+
+<h3>8.3 — The fix: BigInt</h3>
+<p>Modern JavaScript's <code>BigInt</code> type (a SEPARATE type from
+regular <code>number</code>, requiring an <code>n</code> suffix on
+literals, like <code>10n</code>) provides Python-style arbitrary
+precision — the fix was switching the naive comparison path specifically
+to use <code>BigInt</code> exponentiation instead of
+<code>Math.pow()</code>, which correctly computes the full,
+exact large number with no rounding.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does this floating-point
+precision issue matter for real cryptographic implementations, beyond
+this module's own toy self-test?" This is precisely why NO real
+cryptographic library implements RSA/Diffie-Hellman using a language's
+native floating-point or even native fixed-size integer types — real
+implementations use dedicated arbitrary-precision (or "bignum")
+integer libraries specifically engineered for exact arithmetic at
+whatever size the cryptographic parameters require, with NO silent
+precision loss ever tolerated. A cryptographic computation that's
+silently even slightly wrong isn't just an inconvenience the way a
+rounding error might be elsewhere — it produces a WRONG key or WRONG
+signature that could fail unpredictably or, worse, be exploitable.
+</div>
+
+<h2 id="sec9">9. Full Code Walkthrough — number_systems.py</h2>
+
+<h3>9.1 — decimal_to_binary(), read literally</h3>
+<pre>def decimal_to_binary(n: int) -> str:
+    if n == 0:
+        return "0"
+    digits = []
+    while n > 0:
+        digits.append(str(n % 2))
+        n //= 2
+    return "".join(reversed(digits))</pre>
+<p>The <code>if n == 0</code> special case exists because the
+<code>while n > 0</code> loop below would otherwise never execute at
+all for an input of exactly 0, producing an empty string instead of the
+correct answer <code>"0"</code> — a classic "handle the degenerate/edge
+case explicitly, because the general algorithm doesn't naturally cover
+it" pattern worth recognizing; you'll see this exact shape of bug
+repeatedly in real code. <code>n % 2</code> extracts the CURRENT
+lowest bit (0 or 1) — exactly the remainder Section 2.1's by-hand
+division trace computed. <code>n //= 2</code> is Python's INTEGER
+division operator (discarding any fractional remainder, which doesn't
+apply here since we're working with whole numbers throughout) —
+equivalent to shifting all remaining bits one position to the right.
+<code>reversed(digits)</code> is necessary because the loop collects
+bits LEAST-SIGNIFICANT-FIRST (Section 2.1's "bottom to top" ordering),
+but the correct string reading order is MOST-SIGNIFICANT-FIRST.</p>
+
+<h3>9.2 — show_subnet_mask_as_and(), the direct Module 04 bridge</h3>
+<pre>def show_subnet_mask_as_and(ip_octet: int, mask_octet: int):
+    ip_bin = decimal_to_binary(ip_octet).rjust(8, "0")
+    mask_bin = decimal_to_binary(mask_octet).rjust(8, "0")
+    result = ip_octet & mask_octet
+    result_bin = decimal_to_binary(result).rjust(8, "0")</pre>
+<p><code>.rjust(8, "0")</code> pads the binary string on the LEFT (despite
+the name "rjust" meaning "right-justify," which is precisely what
+padding on the left to reach a fixed width accomplishes) with leading
+zeros until it's exactly 8 characters — without this, converting the
+decimal value 5 would produce <code>"101"</code> (3 characters) instead
+of the correct 8-bit-aligned <code>"00000101"</code>, breaking the
+visual alignment this function's whole purpose depends on. The actual
+computation, <code>ip_octet & mask_octet</code>, uses PYTHON'S OWN
+native <code>&</code> operator directly (unlike the from-scratch
+conversion functions above it) — this file deliberately uses the
+built-in bitwise operator here because the POINT of this function is to
+DISPLAY the AND mechanism clearly, not to re-implement AND from more
+primitive operations (which would add complexity without teaching
+anything new, unlike the base-conversion functions, where implementing
+the algorithm by hand WAS the entire point).</p>
+
+<h3>9.3 — The self-test's grouping-shortcut verification, unpacked</h3>
+<pre>if hex_to_decimal(binary_to_hex_by_grouping(bin(n)[2:])) != n:</pre>
+<p>This line is doing something subtle worth spelling out: rather than
+comparing STRINGS directly (which could fail due to harmless leading-zero
+differences between the grouping method's output and Python's own
+<code>hex()</code>), it converts BOTH sides back to a plain integer via
+<code>hex_to_decimal()</code> and compares THOSE. This is a real,
+worth-recognizing testing pattern: when two different but
+"should-be-equivalent" representations might legitimately differ in
+COSMETIC ways (extra leading zeros) while still being semantically
+equal, compare after normalizing to a canonical form (here, back to a
+plain integer) rather than comparing the representations directly.</p>
+
+<h2 id="sec10">10. Full Code Walkthrough — modular_arithmetic.py</h2>
+
+<h3>10.1 — mod_exp(), matching Section 6's trace to the actual code</h3>
+<pre>def mod_exp(base: int, exponent: int, modulus: int) -> int:
+    result = 1
+    base = base % modulus
+    while exponent > 0:
+        if exponent % 2 == 1:
+            result = (result * base) % modulus
+        exponent //= 2
+        base = (base * base) % modulus
+    return result</pre>
+<p><code>base = base % modulus</code> BEFORE the loop starts is a small
+but important optimization/correctness step: it ensures <code>base</code>
+never starts larger than necessary, keeping every subsequent
+multiplication working with the smallest possible numbers (never larger
+than <code>modulus²</code> at any intermediate step — still large, but
+utterly negligible compared to the naive method's full, un-reduced
+power). <code>exponent % 2 == 1</code> checks the CURRENT lowest bit of
+the exponent — exactly mirroring <code>decimal_to_binary()</code>'s own
+<code>n % 2</code> bit-extraction technique from Section 9.1, applied
+here to drive the algorithm's control flow instead of just building a
+display string. <code>base = (base * base) % modulus</code>, executed
+EVERY iteration regardless of whether that bit was 0 or 1, is the
+"squaring" half of "square-and-multiply" — it computes base², then
+base⁴, then base⁸, doubling the effective power represented by
+<code>base</code> at each step, which is precisely why only
+log₂(exponent) iterations are needed rather than exponent-many.</p>
+
+<h3>10.2 — diffie_hellman_demo(), matching Section 7's story to the code</h3>
+<pre>alice_public = mod_exp(g, alice_private, p)
+bob_public = mod_exp(g, bob_private, p)
+...
+alice_shared = mod_exp(bob_public, alice_private, p)
+bob_shared = mod_exp(alice_public, bob_private, p)
+print(f"\n  Shared secret match: {alice_shared == bob_shared}")</pre>
+<p>Notice precisely which VARIABLE feeds into which call: Alice's shared
+secret uses <code>bob_public</code> (the value SHE RECEIVED) raised to
+<code>alice_private</code> (HER OWN number, never transmitted) — exactly
+Section 7's Step 3 narration. The final
+<code>alice_shared == bob_shared</code> comparison is the code's own
+built-in PROOF that the mathematical claim (both sides independently
+converge on the same value) actually holds for these specific numbers —
+this module doesn't just ASSERT that Diffie-Hellman works; it computes
+both sides independently and verifies they match, every single run.</p>
+
+<h2 id="sec11">11. Troubleshooting and Common Confusions</h2>
+
+<div class="scenario">
+<h4>Confusion: "Isn't XOR the same as OR, just with a different name?"</h4>
+<p>No — and the difference matters enormously. OR is true if EITHER OR
+BOTH inputs are 1 (<code>1 OR 1 = 1</code>). XOR is true ONLY if
+EXACTLY ONE input is 1 (<code>1 XOR 1 = 0</code>). This single
+difference — what happens when BOTH bits are 1 — is precisely why XOR,
+uniquely among the basic bitwise operators, is its own inverse
+(Section 4.3) and why OR is NOT reversible the same way (once two 1-bits
+have been OR'd together, you cannot recover whether the original inputs
+were "1 and 0," "0 and 1," or "1 and 1" — information was genuinely
+lost, unlike XOR).</p>
+</div>
+
+<div class="scenario">
+<h4>Confusion: "Why does 0.1 + 0.2 not equal 0.3 in most programming languages, and how does that relate to this module?"</h4>
+<p>This is the SAME floating-point representation issue as Section 8 —
+just showing up with fractional values instead of huge integers. Binary
+floating point cannot represent most decimal fractions EXACTLY (0.1 in
+binary is an infinitely repeating fraction, the same way 1/3 is an
+infinitely repeating decimal), so it stores the closest representable
+approximation — and adding two approximations doesn't always land
+exactly back on another approximation's exact value. It's the identical
+underlying phenomenon (floating point trading exactness for range and
+speed) as the <code>Math.pow()</code> bug, just visible in a more common,
+frequently-encountered form.</p>
+</div>
+
+<div class="pitfall">
+<strong>Mistake: assuming a larger modulus always means a "more secure" result.</strong>
+The MODULUS size matters enormously for real cryptographic security (a
+23 vs. a 2048-bit prime, Section 7's pitfall box), but modulus size
+alone doesn't determine security — the specific mathematical STRUCTURE
+matters too (is the underlying problem, like discrete log, actually
+believed to be hard; are the specific parameters chosen according to
+known-safe generation rules, avoiding known weak special cases). This
+module's toy examples exist specifically to teach the MECHANISM;
+evaluating whether a REAL set of cryptographic parameters is actually
+secure is a much deeper question properly covered in Module 13, not
+something you can determine from modulus size alone.
+</div>
+
+<h2 id="sec12">12. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 00b, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Convert any small decimal number to binary AND to hex, by hand,
+showing the division/remainder steps — not just recognizing common
+values like 255 or 128.</li>
+<li>Explain why hex needs exactly 4 bits per digit and demonstrate the
+grouping shortcut on a fresh 8-bit binary string.</li>
+<li>Distinguish AND, OR, XOR, and NOT precisely, by truth-table
+behavior, and name one real networking use for each (subnet
+masking/AND, broadcast address computation/OR, XOR's role in
+Module 20's obfuscation, mask inversion/NOT).</li>
+<li>Trace <code>mod_exp()</code> by hand for a small example (not
+necessarily 7^128 mod 13 exactly, but a similarly-sized one), showing
+every iteration's <code>base</code>, <code>exponent</code>, and
+<code>result</code> values.</li>
+<li>Narrate the full Diffie-Hellman exchange as a story involving Eve —
+state precisely what Eve sees, what she cannot compute, and WHY
+(the discrete logarithm problem), without simply reciting the formula.</li>
+<li>Explain the floating-point precision bug this module's own build
+hit, in your own words, including why Python's native integers didn't
+have the same problem.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 00b assumes you're comfortable reasoning about bits
+and bytes without hesitation, since it moves immediately into how C
+represents these same concepts at the level of actual memory layout.</p>
+
+</body>
+</html>

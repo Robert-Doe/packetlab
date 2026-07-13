@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00a — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: center; }
+  th { background: #f4f4f4; }
+  nav { font-family: system-ui, sans-serif; }
+  nav a { margin-right: 16px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 00a — Deep Theory: Number Systems, Boolean Algebra, and Modular Arithmetic</h1>
+
+<p>This chapter goes past "run the script and see it work." It's the
+material a comprehensive exam committee could reasonably expect you to
+derive from first principles, not just recognize. Read it slowly. Every
+section ties to a specific later module — that connection is the point,
+not decoration.</p>
+
+<h2>1. Positional Number Systems, Formally</h2>
+
+<p>A positional (or "place-value") number system represents a quantity as
+a sequence of digits, where each digit's contribution to the total value
+depends on its POSITION, not just its face value. Formally, for a number
+written as digits <code>d_{n-1} d_{n-2} ... d_1 d_0</code> in base
+<code>b</code>:</p>
+
+<pre>value = Σ (d_i × b^i)   for i = 0 to n-1</pre>
+
+<p>This single formula IS decimal, binary, octal, and hexadecimal — the
+only thing that changes between them is <code>b</code> (10, 2, 8, 16
+respectively) and which digit symbols are valid (decimal: 0-9; binary:
+0-1; octal: 0-7; hex: 0-9 then a-f for 10-15).</p>
+
+<h3>Why base 2 specifically, for computers</h3>
+<p>Not an arbitrary choice: a transistor (or any binary switch) reliably
+distinguishes exactly two states (on/off, high-voltage/low-voltage) far
+more cheaply and reliably than it could distinguish ten distinct voltage
+levels for a decimal computer. Binary isn't "the computer's number system
+by convention" — it's the number system that matches the physical
+reality of the hardware most directly.</p>
+
+<h3>Why base 16 specifically, for humans reading binary</h3>
+<p>Because <code>16 = 2⁴</code>, exactly. This is the entire reason hex
+exists as a convenience layer: converting between binary and hex requires
+ZERO arithmetic — you can do it by pure lookup, because every possible
+4-bit pattern maps to exactly one of 16 hex digits with no remainder ever
+left over. Octal (base 8 = 2³) has the same clean property with 3-bit
+groups, which is why octal shows up in Unix file permissions (Module
+00c) — three permission bits (read/write/execute) per group, three
+groups (owner/group/other), and octal represents each group as one digit
+with zero arithmetic.</p>
+
+<table>
+<tr><th>Binary (4 bits)</th><th>Hex digit</th><th>Binary (4 bits)</th><th>Hex digit</th></tr>
+<tr><td>0000</td><td>0</td><td>1000</td><td>8</td></tr>
+<tr><td>0001</td><td>1</td><td>1001</td><td>9</td></tr>
+<tr><td>0010</td><td>2</td><td>1010</td><td>a</td></tr>
+<tr><td>0011</td><td>3</td><td>1011</td><td>b</td></tr>
+<tr><td>0100</td><td>4</td><td>1100</td><td>c</td></tr>
+<tr><td>0101</td><td>5</td><td>1101</td><td>d</td></tr>
+<tr><td>0110</td><td>6</td><td>1110</td><td>e</td></tr>
+<tr><td>0111</td><td>7</td><td>1111</td><td>f</td></tr>
+</table>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain why hexadecimal is
+the conventional representation for MAC addresses and IPv6 addresses,
+rather than decimal." Weak answer: "it's shorter." Strong answer: it maps
+to binary with zero-arithmetic grouping (4 bits per digit, exactly), which
+matters because these values are fundamentally bit patterns (a MAC
+address is 48 bits; an IPv6 address is 128 bits) being displayed for
+human convenience — hex preserves the bit-boundary structure that decimal
+would obscure.
+</div>
+
+<h2>2. Two's Complement: How Computers Represent Negative Numbers</h2>
+
+<p>Straight binary (as covered above) only represents non-negative
+integers. Real systems — including every C <code>int</code> you'll write
+in Module 00b, and every signed field in a protocol header — need negative
+numbers too. The near-universal solution is <strong>two's complement</strong>:</p>
+
+<pre>To negate a number in two's complement:
+  1. Flip every bit (this alone is called "one's complement")
+  2. Add 1
+
+Example, 8-bit: negate 5 (00000101)
+  Flip:  11111010
+  Add 1: 11111011   <- this is -5, in 8-bit two's complement</pre>
+
+<div class="why">
+<strong>Why two's complement instead of "just use a sign bit"?</strong>
+A naive "sign-magnitude" scheme (leftmost bit = sign, rest = magnitude)
+has a serious flaw: it produces TWO representations of zero
+(<code>00000000</code> and <code>10000000</code>), which complicates
+hardware and software that has to special-case both. Two's complement has
+exactly ONE representation of zero, and — critically — addition and
+subtraction work IDENTICALLY for signed and unsigned numbers using the
+exact same adder circuit, with overflow simply wrapping around (modular
+arithmetic again!). This is why C's <code>int</code> and Python's
+internal representations (before Python's arbitrary-precision promotion)
+use two's complement — it's not a convention, it's what makes hardware
+arithmetic units simple and uniform.
+</div>
+
+<div class="brain">
+<strong>Brain power:</strong> Module 07's <code>tcp_state_machine.py</code>
+and Module 18's forensics work both deal with TCP sequence numbers, which
+are UNSIGNED 32-bit fields that wrap modulo 2³². Why does TCP use unsigned
+wraparound (Module 00a's modular arithmetic) rather than two's-complement
+signed representation for sequence numbers? Because a sequence number has
+no meaningful concept of "negative" — it's a monotonically increasing
+counter of bytes sent, and when it wraps past 2³²-1 back to 0, that's not
+an error condition to detect (the way signed integer overflow often is in
+C) — it's expected, routine behavior TCP's comparison logic is specifically
+designed to handle correctly (using modular "distance" comparisons, not
+naive greater-than checks).
+</div>
+
+<h2>3. Boolean Algebra: The Complete Picture</h2>
+
+<p><code>number_systems.py</code> demonstrated AND, OR, and XOR
+operationally. Here's the formal structure underneath them. Boolean
+algebra operates on exactly two values (0/false, 1/true) with a small set
+of operations:</p>
+
+<table>
+<tr><th>A</th><th>B</th><th>AND</th><th>OR</th><th>XOR</th><th>NAND</th><th>NOR</th></tr>
+<tr><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>1</td><td>1</td></tr>
+<tr><td>0</td><td>1</td><td>0</td><td>1</td><td>1</td><td>1</td><td>0</td></tr>
+<tr><td>1</td><td>0</td><td>0</td><td>1</td><td>1</td><td>1</td><td>0</td></tr>
+<tr><td>1</td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td></tr>
+</table>
+
+<h3>De Morgan's Laws</h3>
+<pre>NOT (A AND B)  =  (NOT A) OR (NOT B)
+NOT (A OR B)   =  (NOT A) AND (NOT B)</pre>
+<p>This isn't just a symbolic manipulation rule — it's the reason
+firewall rule logic ("block everything EXCEPT these ports" vs. "allow
+only these ports") are related-but-distinct framings of the same
+underlying set, and it's directly useful for simplifying complex
+Suricata/Snort rule conditions (Module 14) or firewall ACLs (Module 10)
+into their clearest form.</p>
+
+<h3>NAND and NOR are "functionally complete"</h3>
+<p>A fact worth knowing for exam purposes: EVERY boolean function — no
+matter how complex — can be built from NAND gates alone (or NOR gates
+alone). This is why real CPU hardware is often built predominantly from
+NAND gates: you don't need separate physical AND, OR, and NOT circuits if
+you can compose all of them from one universal building block. This isn't
+directly used elsewhere in this course, but it's a classic comprehensive-exam
+"do you actually understand digital logic, or just use it" question.</p>
+
+<h2>4. Modular Arithmetic: The Formal Structure Cryptography Depends On</h2>
+
+<h3>Definition</h3>
+<p><code>a ≡ b (mod n)</code> means <code>a</code> and <code>b</code> leave
+the same remainder when divided by <code>n</code> — equivalently,
+<code>n</code> evenly divides <code>(a - b)</code>. This defines an
+equivalence relation that partitions all integers into exactly
+<code>n</code> "residue classes" (in mod 12 clock arithmetic, every
+integer belongs to one of 12 classes: {..., -12, 0, 12, 24, ...},
+{..., -11, 1, 13, 25, ...}, and so on).</p>
+
+<h3>Properties that make modular arithmetic usable for cryptography</h3>
+<ul>
+<li><strong>Closure under addition/multiplication:</strong> <code>(a mod n) + (b mod n) ≡ (a + b) mod n</code>,
+and similarly for multiplication. This is WHY <code>mod_exp()</code> can
+take the modulus at every intermediate step instead of only at the end —
+the result is mathematically guaranteed identical either way, but taking
+the modulus early keeps every intermediate number small.</li>
+<li><strong>Modular inverse:</strong> for some pairs (a, n), there exists
+a number <code>a⁻¹</code> such that <code>a × a⁻¹ ≡ 1 (mod n)</code> —
+the modular equivalent of division. This exists if and only if
+<code>gcd(a, n) = 1</code> (a and n share no common factors). Computing
+modular inverses (via the Extended Euclidean Algorithm) is a required step
+in RSA key generation (Module 13's territory) — the decryption exponent
+<code>d</code> is literally defined as the modular inverse of the
+encryption exponent <code>e</code>, modulo <code>φ(n)</code>.</li>
+</ul>
+
+<h3>Fermat's Little Theorem (why RSA's math actually works)</h3>
+<pre>If p is prime and a is not divisible by p, then:  a^(p-1) ≡ 1 (mod p)</pre>
+<p>This single theorem (and its generalization, Euler's theorem, for
+composite moduli) is the mathematical bedrock RSA's correctness proof
+rests on. You don't need to reproduce the full RSA correctness proof for
+most exam contexts, but you SHOULD be able to state that RSA's security
+and correctness both trace back to properties of modular exponentiation
+over numbers built from large primes — which is exactly what
+<code>mod_exp()</code> computes, just at toy scale.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why can't you just compute
+<code>base ** exponent</code> directly and then take the modulus, for
+real cryptographic key sizes?" Answer: for a 2048-bit RSA exponent, the
+un-reduced power would be a number with roughly 10^600 digits — more
+digits than atoms in the observable universe. `mod_exp()`'s
+square-and-multiply approach keeps every intermediate value bounded to
+roughly the size of the modulus itself (a few thousand bits), which is
+the ONLY reason modular exponentiation at cryptographic scale is
+computationally feasible at all. This is a complexity argument
+(O(log n) modular multiplications instead of computing an astronomically
+large intermediate number) as much as a cryptography one.
+</div>
+
+<h2>5. Diffie-Hellman, Properly: The Discrete Logarithm Problem</h2>
+
+<p><code>modular_arithmetic.py</code>'s demo works because of one
+specific computational asymmetry: given <code>g</code>, <code>p</code>,
+and <code>a</code>, computing <code>g^a mod p</code> is fast (via
+square-and-multiply). But given <code>g</code>, <code>p</code>, and
+<code>g^a mod p</code>, recovering <code>a</code> — the "discrete
+logarithm" — is believed to be computationally infeasible for large
+enough <code>p</code>, with no known efficient (polynomial-time)
+algorithm on classical computers.</p>
+
+<div class="brain">
+<strong>Brain power:</strong> notice the word "believed." Unlike some
+mathematical facts, the hardness of the discrete logarithm problem is NOT
+proven — it's an open conjecture, supported by decades of failed attempts
+to find an efficient algorithm, not a mathematical proof of impossibility.
+This is true of essentially every widely-deployed public-key cryptosystem
+(RSA's security rests on the believed hardness of integer factorization;
+ECDH rests on the believed hardness of the elliptic curve discrete log
+problem). A comprehensive exam question like "is RSA provably secure?" has
+a precise correct answer: no — its security is CONJECTURED, based on the
+best known attacks being infeasible, not on a mathematical impossibility
+proof. (This is also exactly why quantum computers running Shor's
+algorithm are a genuine threat to RSA/DH/ECDH specifically — Shor's
+algorithm efficiently solves both factoring and discrete log on a
+sufficiently large quantum computer, which is why "post-quantum
+cryptography" is an active research area building on DIFFERENT hard
+problems believed to resist quantum attack.)
+</div>
+
+<h3>The vulnerability raw Diffie-Hellman does NOT solve: authentication</h3>
+<p><code>diffie_hellman_demo()</code> proves two parties can agree on a
+shared secret without transmitting it — but it proves NOTHING about who
+those two parties actually are. A man-in-the-middle attacker who can
+intercept and modify traffic between Alice and Bob can run a SEPARATE DH
+exchange with each of them, ending up with two different shared secrets
+(one with "Alice," one with "Bob") while both endpoints believe they're
+talking directly to each other. This is precisely why real-world protocols
+never use raw, unauthenticated DH — TLS (Module 13) combines a DH-family
+key exchange WITH certificate-based authentication (the server proves its
+identity via a certificate chain) specifically to close this gap. Raw DH
+solves confidentiality of the key exchange; it does nothing for
+authentication, which is a separate problem requiring a separate
+mechanism (PKI, Module 13).</p>
+
+<h2>6. XOR, Checksums, and Error Detection (a preview of Module 02's checksum16)</h2>
+
+<p>Module 02's <code>checksum16()</code> function sums 16-bit words with
+carry-wraparound and complements the result. This is a member of a
+broader family of error-detection techniques built on the algebra of
+GF(2) — the "Galois Field" of two elements, where addition IS XOR (no
+carry) and every element is its own additive inverse. CRC (Cyclic
+Redundancy Check), used in Ethernet's frame check sequence, is a more
+sophisticated member of this same family: it treats the message as
+coefficients of a polynomial over GF(2) and computes a remainder after
+polynomial division by a fixed "generator polynomial." You won't need to
+implement CRC in this course, but you should be able to state, at an exam
+level, that checksums and CRCs are fundamentally applications of modular
+arithmetic and XOR-based algebra to the problem of detecting (not
+correcting) transmission errors — and that they detect ACCIDENTAL
+corruption reliably but provide no protection against a deliberate,
+intelligent attacker who can recompute a valid checksum for tampered data
+(which is exactly why cryptographic integrity — HMAC, Module 12's PMK/PTK
+work — is a fundamentally different, stronger guarantee than a checksum).</p>
+
+<h2>Summary: what this module actually unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Binary/hex conversion, bit grouping</td><td>Module 02 (frame bytes), Module 04 (subnetting), everywhere addresses are displayed</td></tr>
+<tr><td>Bitwise AND/OR/XOR, two's complement</td><td>Module 04 (subnet masks), Module 02 (checksums), Module 00b (C bit manipulation)</td></tr>
+<tr><td>Modular arithmetic, fast exponentiation</td><td>Module 12 (WPA2 PRF), Module 13 (RSA/TLS), this file's own DH demo</td></tr>
+<tr><td>Discrete logarithm hardness, DH key exchange</td><td>Module 13 (TLS key exchange), any future cryptography you study</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions covering everything above.</p>
+
+</body>
+</html>

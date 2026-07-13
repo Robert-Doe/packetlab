@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00a — Exam Practice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.6; color: #1a1a1a; }
+  h1 { border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { margin-top: 36px; }
+  details { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  summary { font-weight: 600; cursor: pointer; }
+  summary::marker { color: #4c51bf; }
+  .answer { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 0.88rem; }
+  nav a { margin-right: 16px; }
+  .instructions { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">← Deep Theory</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 00a — Exam Practice</h1>
+
+<div class="instructions">
+Cover the answer before reading it. Say your answer out loud, as if a
+committee member just asked you the question directly — that's a
+meaningfully different (and harder) skill than recognizing a correct
+answer when you read it. Click <strong>Show answer</strong> only after
+you've committed to what you'd actually say.
+</div>
+
+<h2>Number systems</h2>
+
+<details>
+<summary>Q1. Convert 0xC0 to binary and to decimal. Show your work using the 4-bits-per-hex-digit method, not decimal arithmetic.</summary>
+<div class="answer">
+<strong>A:</strong> Split C0 into its two hex digits: C and 0.
+C = 1100 (from the lookup table: C is the 13th hex digit, 12 in decimal, = 1100 in 4 bits).
+0 = 0000.
+Concatenated: <code>11000000</code>. Converting to decimal via place value:
+128 + 64 = 192. So 0xC0 = <code>11000000</code> binary = 192 decimal.
+(Recognize this number? It's the last octet of a /26 subnet mask —
+<code>255.255.255.192</code> — from Module 04.)
+</div>
+</details>
+
+<details>
+<summary>Q2. Why does a single hex digit never require carrying or borrowing when converting to/from binary, while decimal-to-binary conversion does?</summary>
+<div class="answer">
+<strong>A:</strong> Because 16 = 2⁴ exactly — every possible 4-bit binary
+pattern (0000 through 1111) corresponds to exactly one of the 16 hex
+digits, with no remainder. Decimal's base (10) is not a power of 2, so
+converting decimal digits to binary requires actual positional arithmetic
+(repeated division/multiplication), not simple lookup grouping.
+</div>
+</details>
+
+<details>
+<summary>Q3. What is two's complement, and why do computers use it instead of a simple sign-bit representation for negative numbers?</summary>
+<div class="answer">
+<strong>A:</strong> Two's complement negates a number by flipping every
+bit and adding 1. Computers use it because (a) it has exactly one
+representation of zero, unlike sign-magnitude's two (+0 and −0), and
+(b) it lets the same binary addition circuit correctly handle both signed
+and unsigned arithmetic — overflow simply wraps around modulo 2ⁿ, with no
+special-casing needed for the sign bit during the addition itself.
+</div>
+</details>
+
+<h2>Boolean algebra</h2>
+
+<details>
+<summary>Q4. State De Morgan's laws and give one networking-relevant example of applying either one.</summary>
+<div class="answer">
+<strong>A:</strong> NOT(A AND B) = (NOT A) OR (NOT B), and
+NOT(A OR B) = (NOT A) AND (NOT B). Example: a firewall rule "block traffic
+that is NOT (from trusted_ip AND on port 443)" is logically equivalent,
+by De Morgan's, to "block traffic that is (NOT from trusted_ip) OR
+(NOT on port 443)" — i.e., block anything either from an untrusted source
+OR not on port 443. Recognizing this equivalence lets you rewrite complex
+negated conditions into simpler positive ones when writing Suricata/Snort
+rules (Module 14) or ACLs (Module 10).
+</div>
+</details>
+
+<details>
+<summary>Q5. Why is XOR specifically useful for a simple stream cipher (like a one-time pad), and what property of XOR makes decryption "the same operation as encryption"?</summary>
+<div class="answer">
+<strong>A:</strong> XOR is its own inverse: for any values a and b,
+<code>a XOR b XOR b = a</code>. Encrypting is <code>ciphertext = plaintext XOR key</code>;
+decrypting with the SAME key is <code>plaintext = ciphertext XOR key</code>,
+which expands to <code>(plaintext XOR key) XOR key = plaintext</code> by
+that self-inverse property. This is why a one-time pad's encryption and
+decryption are literally the identical operation — no separate "reverse"
+algorithm is needed.
+</div>
+</details>
+
+<details>
+<summary>Q6. Prove (or explain intuitively) that NAND is "functionally complete" — that any boolean function can be built from NAND gates alone.</summary>
+<div class="answer">
+<strong>A:</strong> It suffices to show NAND can construct NOT, AND, and
+OR (since any boolean function can be expressed using those three).
+NOT(A) = NAND(A, A) (tying both inputs together makes NAND behave as
+inversion). AND(A,B) = NOT(NAND(A,B)) = NAND(NAND(A,B), NAND(A,B)).
+OR(A,B) = NAND(NOT A, NOT B) = NAND(NAND(A,A), NAND(B,B)), by De Morgan's.
+Since NOT, AND, and OR are each individually constructible from NAND
+alone, and any boolean function can be expressed in terms of those three,
+NAND alone suffices for any boolean function.
+</div>
+</details>
+
+<h2>Modular arithmetic</h2>
+
+<details>
+<summary>Q7. Define modular congruence formally: what does "a ≡ b (mod n)" mean?</summary>
+<div class="answer">
+<strong>A:</strong> It means a and b leave the same remainder when
+divided by n, equivalently that n evenly divides (a − b). This defines an
+equivalence relation partitioning the integers into exactly n residue
+classes.
+</div>
+</details>
+
+<details>
+<summary>Q8. Why can mod_exp() take the modulus at every intermediate multiplication instead of only once at the very end, and still produce a mathematically correct result?</summary>
+<div class="answer">
+<strong>A:</strong> Because modular arithmetic is closed under
+multiplication: <code>(a mod n) × (b mod n) ≡ (a × b) mod n</code>. This
+means reducing modulo n after every multiplication, rather than only at
+the end, produces an identical final result while keeping every
+intermediate value bounded to roughly the size of the modulus — which is
+the entire reason cryptographic-scale modular exponentiation is
+computationally feasible at all (the alternative would require
+astronomically large intermediate numbers).
+</div>
+</details>
+
+<details>
+<summary>Q9. What is a modular inverse, when does it exist, and where does this course use the concept even if the code doesn't compute one directly?</summary>
+<div class="answer">
+<strong>A:</strong> The modular inverse of a, modulo n, is a number a⁻¹
+such that <code>a × a⁻¹ ≡ 1 (mod n)</code> — the modular equivalent of
+division. It exists if and only if gcd(a, n) = 1. RSA key generation
+(underlying Module 13's certificates, though this course's toy_ca.py
+delegates the actual RSA math to the `cryptography` library) computes the
+private exponent d as the modular inverse of the public exponent e,
+modulo φ(n) — this is literally what "generating an RSA key pair" means
+mathematically.
+</div>
+</details>
+
+<details>
+<summary>Q10. State Fermat's Little Theorem and explain its relevance to RSA, at a level appropriate for a comprehensive exam (you don't need the full proof).</summary>
+<div class="answer">
+<strong>A:</strong> If p is prime and a is not divisible by p, then
+a^(p−1) ≡ 1 (mod p). RSA's correctness (that decryption actually recovers
+the original plaintext) relies on a generalization of this theorem
+(Euler's theorem, for the composite modulus n = p×q used in RSA) to prove
+that encrypting then decrypting returns the original message. You should
+be able to state that RSA's mathematical correctness traces back to
+number-theoretic results about modular exponentiation with prime-derived
+moduli, even without reproducing the full derivation live.
+</div>
+</details>
+
+<h2>Diffie-Hellman & discrete logarithms</h2>
+
+<details>
+<summary>Q11. In the Diffie-Hellman exchange, what specifically can an eavesdropper observe, and what can they NOT feasibly compute from it?</summary>
+<div class="answer">
+<strong>A:</strong> An eavesdropper observes the public parameters p and
+g, and both parties' public values (g^a mod p and g^b mod p). They cannot
+feasibly compute either private exponent (a or b) from these — this is
+the discrete logarithm problem — and therefore cannot feasibly compute
+the shared secret g^(ab) mod p either, despite having seen every bit that
+crossed the wire.
+</div>
+</details>
+
+<details>
+<summary>Q12. Is the hardness of the discrete logarithm problem a proven mathematical fact or a conjecture? Why does this distinction matter?</summary>
+<div class="answer">
+<strong>A:</strong> It's a conjecture, not a proof — supported by decades
+of failed attempts to find an efficient classical algorithm, not a proof
+of impossibility. This matters because it means DH/RSA/ECDH's security is
+contingent on continued failure to find a better algorithm (or on the
+continued unavailability of large-scale quantum computers, since Shor's
+algorithm DOES efficiently solve both discrete log and factoring on a
+sufficiently large quantum computer) — it is not an absolute mathematical
+guarantee the way, say, the correctness of long division is.
+</div>
+</details>
+
+<details>
+<summary>Q13. Raw, unauthenticated Diffie-Hellman is vulnerable to what specific attack, and how does real-world TLS close that gap?</summary>
+<div class="answer">
+<strong>A:</strong> A man-in-the-middle attack: an attacker positioned
+between Alice and Bob can run two separate DH exchanges (one with each
+party), ending up with two different shared secrets while both victims
+believe they're talking directly to each other. Raw DH proves nothing
+about identity. TLS closes this by combining DH-family key exchange with
+certificate-based authentication (Module 13) — the server proves its
+identity via a certificate chain rooted in a CA the client already
+trusts, which an active MITM attacker cannot forge without possessing a
+trusted CA's private key.
+</div>
+</details>
+
+<h2>Synthesis</h2>
+
+<details>
+<summary>Q14. A colleague claims "checksums and cryptographic hashes/HMACs are basically the same thing, just implementation details differ." Evaluate this claim.</summary>
+<div class="answer">
+<strong>A:</strong> The claim is wrong in an important way. Checksums
+(and CRCs) are designed to detect ACCIDENTAL corruption efficiently — they
+provide no protection against a deliberate adversary, who can trivially
+compute a new valid checksum for tampered data since checksum algorithms
+are neither secret-keyed nor computationally hard to invert/match.
+Cryptographic hashes and HMACs are specifically designed to resist
+deliberate tampering: HMAC requires a secret key the attacker doesn't
+have, and cryptographic hash functions are designed to make finding a
+second input with the same hash computationally infeasible. Checksums
+answer "did this get corrupted by accident," while HMACs answer "can I
+trust this wasn't tampered with by an adversary who doesn't know the
+key" — genuinely different threat models, not an implementation detail.
+</div>
+</details>
+
+<details>
+<summary>Q15. Explain, end to end, why Module 00a's Diffie-Hellman demo and Module 12's WPA2 PTK derivation are both "modular arithmetic doing cryptographic work," despite looking like completely different code.</summary>
+<div class="answer">
+<strong>A:</strong> Diffie-Hellman uses modular EXPONENTIATION directly —
+its security rests on the discrete logarithm problem over a modular group.
+Module 12's WPA2 PTK derivation uses HMAC-SHA1 in a PRF construction,
+which internally relies on modular arithmetic within SHA1's own compression
+function (addition mod 2³² is used throughout SHA1's internal rounds), but
+its SECURITY doesn't rest on the discrete logarithm problem — it rests on
+HMAC/SHA1's resistance to forgery given a secret key (the PMK). Both are
+"modular arithmetic doing cryptographic work" in the loose sense that
+integers-mod-something appear throughout both algorithms, but they lean on
+different, independent hardness assumptions (discrete log vs. hash-function
+collision/preimage resistance) — conflating them would be a meaningful
+exam-level mistake.
+</div>
+</details>
+
+</body>
+</html>

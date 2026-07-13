@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00a Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+  nav a { margin-right: 16px; }
+</style>
+</head>
+<body>
+
+<nav><a href="headfirst.md">Concepts</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 00a — Tutorial</h1>
+<p>Goal: run the actual algorithms behind binary/hex conversion and modular
+arithmetic yourself, including a working Diffie-Hellman key exchange —
+before you need any of this for Module 04's subnetting or Module 13's
+cryptography.</p>
+
+<h2>Step 1 — base conversion, by hand</h2>
+<pre>cd module-00a-discrete-math-number-systems
+python number_systems.py</pre>
+<div class="expect"><strong>Expected:</strong> decimal/binary/hex
+conversions for several test values, a demonstration of the "4 bits per
+hex digit" shortcut, a worked subnet-mask-as-AND example matching Module
+04's exact numbers (192.168.1.69/26), an XOR demonstration, and a 200/200
+self-test confirming every hand-rolled function matches Python's own
+built-ins.</div>
+<pre>node number_systems.js</pre>
+<div class="expect">Identical output.</div>
+
+<h2>Step 2 — modular arithmetic and a real key exchange</h2>
+<pre>python modular_arithmetic.py</pre>
+<div class="expect"><strong>Expected:</strong> a clock-arithmetic
+explanation, fast modular exponentiation verified against the naive
+method across 50 trials, and — the centerpiece — a working Diffie-Hellman
+exchange where Alice and Bob independently compute the identical shared
+secret without ever transmitting it.</div>
+<pre>node modular_arithmetic.js</pre>
+<div class="note">
+<strong>A real bug caught during this module's build:</strong> the first
+version of the Node self-test used <code>Math.pow()</code> for the "naive"
+comparison and failed 46 of 50 trials — not because the fast method was
+wrong, but because JavaScript's <code>number</code> type (a 64-bit float)
+loses precision on integers with more than about 15-17 significant digits,
+and <code>1000^40</code> is a 120-digit number. Switching the naive
+comparison to <code>BigInt</code> (JS's arbitrary-precision integer type)
+fixed it. This is a genuinely important lesson in its own right — see
+<code>tutorial2.html</code>'s section on floating-point limits.
+</div>
+
+<h2>Exercises before Module 00b</h2>
+<ol>
+  <li><strong>Convert a real IP address by hand.</strong> Take your home
+      network's gateway IP (from Module 01) and convert each octet to
+      binary using <code>decimal_to_binary()</code>, then to hex using the
+      4-bits-per-digit shortcut. Cross-check with
+      <code>number_systems.py</code>.</li>
+  <li><strong>Run the DH exchange with your own numbers.</strong> Pick a
+      different (still small, still toy) prime and generator, and
+      different private numbers for "Alice" and "Bob." Confirm both sides
+      still converge on the same shared secret.</li>
+  <li><strong>Read tutorial2.html and tutorial3.html fully</strong> before
+      moving to Module 00b — this module's real depth is there, not in
+      this quick run-through.</li>
+</ol>
+
+</body>
+</html>
