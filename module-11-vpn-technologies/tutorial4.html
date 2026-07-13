@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 11 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 11 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+explain X25519 key exchange as Diffie-Hellman's real, modern
+elliptic-curve form, explain WireGuard's "Cryptokey Routing" concept
+(what <code>AllowedIPs</code> ACTUALLY does — it's not just a route),
+and articulate precisely why VPN protocols choose UDP despite carrying
+traffic that often wants reliability.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">X25519 — Diffie-Hellman's real, modern form</a></li>
+<li><a href="#sec2">Why a key pair, not just a shared secret</a></li>
+<li><a href="#sec3">AllowedIPs — WireGuard's Cryptokey Routing, precisely</a></li>
+<li><a href="#sec4">Why UDP, not TCP — the TCP-meltdown problem, explained</a></li>
+<li><a href="#sec5">PersistentKeepalive — why it exists, tied directly to Module 10</a></li>
+<li><a href="#sec6">The Noise Protocol Framework, briefly and honestly</a></li>
+<li><a href="#sec7">Full code walkthrough — wg_keygen.py</a></li>
+<li><a href="#sec8">Full code walkthrough — wg_config_generator.py</a></li>
+<li><a href="#sec9">What Wireshark shows (and doesn't), precisely explained</a></li>
+<li><a href="#sec10">Troubleshooting and common confusions</a></li>
+<li><a href="#sec11">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. X25519 — Diffie-Hellman's Real, Modern Form</h2>
+
+<p>Module 00a Section 7 walked through Diffie-Hellman using ordinary
+modular exponentiation over integers (<code>g^a mod p</code>). X25519 is
+the SAME underlying idea — two parties each combine their own private
+value with the other's public value to reach an identical shared secret,
+with an eavesdropper unable to reverse the process — but performed over
+an ELLIPTIC CURVE (specifically Curve25519) instead of plain integer
+modular arithmetic.</p>
+
+<div class="why">
+<strong>Why does real-world cryptography (WireGuard included) use
+elliptic curves instead of the plain integer Diffie-Hellman Module 00a
+demonstrated?</strong> Elliptic curve cryptography achieves the SAME
+security level as integer-based Diffie-Hellman with DRAMATICALLY smaller
+key sizes — a 256-bit elliptic curve key (X25519 keys are exactly 32
+bytes = 256 bits, confirmed by this module's own
+<code>len(base64.b64decode(priv))</code> check) provides security
+roughly comparable to a 3072-bit integer Diffie-Hellman key. Smaller
+keys mean faster computation, smaller network overhead (relevant for
+WireGuard's minimal-overhead design goals), and smaller storage — a
+genuine, practical engineering win, not just an academic curiosity. The
+underlying SECURITY ASSUMPTION is different too (the elliptic curve
+discrete logarithm problem, rather than the plain integer discrete
+logarithm problem Module 00a's DH relies on) — but the STRUCTURE of the
+key exchange (each side combines their own private value with the
+other's public value) is conceptually identical.
+</div>
+
+<h2 id="sec2">2. Why A Key Pair, Not Just A Shared Secret</h2>
+
+<p>Unlike a simple pre-shared password (a single secret both sides
+already know), WireGuard uses ASYMMETRIC key pairs — each peer has its
+OWN private key (never shared) and a corresponding PUBLIC key (freely
+shareable, exactly the concept Module 13's PKI material covers in full
+depth).</p>
+
+<div class="scenario">
+<h4>Why this module's own script re-derives and verifies the public key, and why that's meaningful</h4>
+<pre>priv, pub = generate_keypair()
+rederived = derive_public_key(priv)
+print(f"Match: {rederived == pub}")</pre>
+<p>This verification is genuinely meaningful, not just a sanity check:
+it confirms the MATHEMATICAL RELATIONSHIP between private and public key
+is real and correctly implemented — a public key isn't an arbitrary,
+separately-generated value; it's COMPUTED, deterministically, from the
+private key via a one-way function (easy to compute forward, believed
+computationally infeasible to reverse — the exact same asymmetry
+principle Module 00a Section 7's discrete-log discussion covered). Every
+time this script runs, it proves this relationship holds for a FRESH,
+newly-generated key pair, not just for one hardcoded example.</p>
+</div>
+
+<div class="why">
+<strong>Why does a key PAIR (rather than one shared secret both sides
+already possess) matter for a VPN specifically?</strong> A shared secret
+requires SOME secure channel to originally exchange it — a real,
+practical bootstrapping problem. A key pair lets you distribute your
+PUBLIC key completely openly (paste it into an email, post it publicly —
+this module's own key material is explicitly non-secret on the public
+side) while your PRIVATE key never leaves your own device at all. This
+is EXACTLY the same asymmetric-key advantage Module 00a's Diffie-Hellman
+scenario demonstrated (Alice and Bob exchange PUBLIC values over a
+channel Eve is actively watching, yet still reach a shared secret Eve
+cannot compute) — WireGuard's peer configuration IS a real-world Diffie-
+Hellman-style exchange, just using each peer's LONG-TERM key pair as the
+basis, rather than a fresh, single-use exchange for each session.
+</div>
+
+<h2 id="sec3">3. AllowedIPs — WireGuard's Cryptokey Routing, Precisely</h2>
+
+<p>This is the single most conceptually distinctive part of WireGuard's
+design, and worth explaining with complete precision:
+<code>AllowedIPs</code> is NOT simply a routing table entry the way
+Module 05's static routes are — it does TWO DIFFERENT JOBS
+SIMULTANEOUSLY, and understanding both is essential.</p>
+
+<table>
+<tr><th>Job</th><th>What it means</th></tr>
+<tr><td>Outbound routing</td><td>"Traffic destined for these IP ranges should be sent INTO this specific tunnel/peer" — the ordinary routing-table meaning you'd expect</td></tr>
+<tr><td>Inbound cryptographic authorization (the DISTINCTIVE part)</td><td>"Only accept DECRYPTED traffic FROM this peer if its SOURCE address falls within these ranges" — WireGuard will DISCARD a packet that decrypts successfully (proving it came from the correct, authenticated peer) but whose claimed source address ISN'T within that peer's configured AllowedIPs, even though decryption itself succeeded</td></tr>
+</table>
+
+<div class="scenario">
+<h4>Worked scenario: why AllowedIPs = 10.10.0.2/32 specifically matters as a security boundary, not just a route</h4>
+<p>In this module's own generated config, "vps" is configured with
+<code>AllowedIPs = 10.10.0.1/32</code> for its "laptop" peer — meaning
+VERY specifically: "I will only accept traffic from the laptop peer if
+its claimed source address is EXACTLY 10.10.0.1, nothing else." Even if
+"laptop" (or someone who somehow obtained laptop's private key) sent
+traffic claiming to originate from a DIFFERENT source address, "vps"
+would REJECT it — this is a real, meaningful ANTI-SPOOFING protection,
+enforced cryptographically, not just a routing convenience. This is
+precisely WHY this module's own reference notes explicitly flag
+<code>AllowedIPs</code> as "deliberately narrow (/32)" for a
+point-to-point tunnel — widening it (Exercise 1, for a site-to-site
+scenario) is a genuine security-scope decision, not merely a routing
+convenience choice.</p>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain why WireGuard's
+AllowedIPs is described as 'Cryptokey Routing' rather than simply
+'routing.'" Ordinary routing (Module 05) makes forwarding decisions
+based ENTIRELY on destination address, with no cryptographic
+verification of the SOURCE at all — a router simply forwards based on
+its table, trusting whatever source address a packet claims. WireGuard's
+AllowedIPs binds a SPECIFIC CRYPTOGRAPHIC IDENTITY (a peer's public key)
+to a SPECIFIC SET OF PERMITTED SOURCE ADDRESSES for that peer — meaning
+the "routing" decision is fused with an authentication/authorization
+check: traffic is only accepted if it BOTH decrypts correctly under
+the claimed peer's key AND originates from an address that peer is
+specifically permitted to use. This fusion of cryptographic identity and
+address-based policy, in one single configuration directive, is exactly
+what "Cryptokey Routing" names — a genuinely distinctive design choice
+compared to traditional routing/firewall architectures which keep these
+concerns (Module 10's separate NAT vs. firewall chains) more separated.
+</div>
+
+<h2 id="sec4">4. Why UDP, Not TCP — The TCP-Meltdown Problem, Explained</h2>
+
+<p>This module's own Exercise 3 asks you to reason through why WireGuard
+chooses UDP (Module 07's "unreliable" transport) despite typically
+carrying traffic that DOES want reliability (a TCP connection tunneled
+inside the VPN, for instance). The real, precise answer involves a
+well-documented, genuinely real phenomenon called "TCP-over-TCP
+meltdown."</p>
+
+<div class="scenario">
+<h4>The precise mechanism of TCP-over-TCP meltdown, explained</h4>
+<p>Imagine (hypothetically — WireGuard does NOT actually do this,
+which is exactly the point) a VPN tunnel built over TCP instead of UDP,
+carrying an INNER TCP connection (your actual application traffic)
+inside it. If a packet is lost on the real network, BOTH the outer
+tunnel's TCP AND the inner application's TCP independently detect the
+loss and independently trigger their OWN retransmission and congestion-
+control behavior (Module 07's retransmission mechanism, now happening at
+TWO NESTED LAYERS simultaneously). These two independent reliability
+mechanisms can interact BADLY — the outer tunnel's retransmission timer
+and the inner connection's retransmission timer aren't coordinated at
+all, and under real packet loss conditions, this can cause severe,
+measurable performance degradation (documented, real behavior, not a
+theoretical curiosity) — sometimes far WORSE than either layer's loss
+handling would be alone.</p>
+</div>
+
+<div class="why">
+<strong>Why does using UDP for the OUTER tunnel avoid this problem
+entirely?</strong> UDP provides NO reliability guarantees of its own
+(Module 07 Section 7) — meaning there's only ONE reliability/retransmission
+mechanism in the entire picture: whatever the INNER, actual application
+traffic uses (commonly TCP, for ordinary web/app traffic). A single lost
+packet is handled by exactly ONE layer's retransmission logic, not two
+nested, uncoordinated ones — UDP's "dumb," guarantee-free nature is
+EXACTLY what makes it the correct transport choice for tunneling
+protocols carrying arbitrary inner traffic, a genuinely counter-intuitive
+but well-established real design principle.
+</div>
+
+<h2 id="sec5">5. PersistentKeepalive — Why It Exists, Tied Directly To Module 10</h2>
+
+<p>This module's own generated config includes
+<code>PersistentKeepalive = 25</code> on the "laptop" (client) side
+specifically — and the reasoning is a DIRECT, precise application of
+Module 10's NAT/stateful-firewall material.</p>
+
+<div class="scenario">
+<h4>Why laptop needs this but vps doesn't, precisely reasoned from Module 10</h4>
+<p>"Laptop" is very likely behind a NAT/firewall (Module 10's own
+territory — a typical home network situation) — its OUTBOUND connection
+to "vps" creates a NAT/conntrack state entry (Module 10 Section 3)
+allowing RETURN traffic from vps. But that state entry has a LIMITED
+LIFETIME — if no traffic flows for a while, the home router's NAT table
+entry EXPIRES (exactly Module 10 Section 6's port-exhaustion-adjacent
+concern, applied to idle-timeout rather than exhaustion specifically).
+Once expired, vps's replies would arrive at laptop's home router with NO
+matching state entry — and per Module 10 Scenario 3's own logic, get
+DROPPED as unsolicited inbound traffic, even though it's a perfectly
+legitimate WireGuard reply. <code>PersistentKeepalive = 25</code> tells
+WireGuard to send a tiny, otherwise-meaningless packet every 25 seconds
+specifically to keep that NAT state entry perpetually fresh and
+un-expired — "vps" (commonly a cloud VPS with a REAL, stable public IP
+and no NAT of its own to worry about) doesn't need this, which is
+exactly why it's absent from "vps.conf" in this module's own generated
+output.</p>
+</div>
+
+<h2 id="sec6">6. The Noise Protocol Framework, Briefly And Honestly</h2>
+
+<p>WireGuard's actual handshake is built on the Noise Protocol
+Framework (specifically the "IK" pattern) — a genuinely more advanced
+topic than this module's own scripts implement directly, worth knowing
+about honestly rather than glossing over.</p>
+
+<div class="why">
+<strong>Why does this module honestly NOT implement the actual Noise
+handshake, only key generation and config file production?</strong>
+Because implementing a correct, secure protocol handshake from scratch
+is a GENUINELY DIFFERENT and substantially riskier undertaking than
+generating and verifying key pairs (which this module DOES do, for
+real) — a hand-rolled, imperfect implementation of a security-critical
+handshake protocol could introduce real vulnerabilities, precisely the
+kind of "don't roll your own crypto" principle real security practice
+takes seriously. This module's own scope (real key generation, real
+config file production, bringing up an ACTUAL WireGuard tunnel using the
+REAL, audited WireGuard implementation) achieves genuine, hands-on
+understanding without requiring (or risking) a from-scratch
+reimplementation of the cryptographic handshake itself — you use the
+REAL, trusted implementation for the security-critical parts, exactly as
+any responsible real-world deployment would.
+</div>
+
+<h2 id="sec7">7. Full Code Walkthrough — wg_keygen.py</h2>
+
+<pre>private_key = X25519PrivateKey.generate()
+private_bytes = private_key.private_bytes(
+    encoding=Encoding.Raw, format=PrivateFormat.Raw, encryption_algorithm=NoEncryption()
+)</pre>
+<p><code>X25519PrivateKey.generate()</code> uses the underlying
+<code>cryptography</code> library's own CSPRNG (cryptographically secure
+random number generator) — NOT Python's ordinary <code>random</code>
+module (which is explicitly NOT safe for cryptographic key generation,
+a genuinely important distinction: ordinary PRNGs are designed for
+statistical randomness/reproducibility, not unpredictability against a
+determined adversary). <code>encryption_algorithm=NoEncryption()</code>
+specifically means "export the raw private key bytes directly, without
+wrapping them in any additional password-based encryption layer" —
+appropriate here since this module's own output is meant to be pasted
+directly into a WireGuard config file in the exact format
+<code>wg genkey</code> itself produces, which is always raw,
+base64-encoded key material.</p>
+
+<h2 id="sec8">8. Full Code Walkthrough — wg_config_generator.py</h2>
+
+<pre>config_a = (
+    f"[Interface]\n"
+    f"PrivateKey = {a_priv}\n"
+    ...
+    f"[Peer]\n"
+    f"PublicKey = {b_pub}\n"
+    ...
+)</pre>
+<p>Notice precisely WHICH key goes where — <code>[Interface]</code>'s
+<code>PrivateKey</code> is THIS machine's OWN private key (laptop's, in
+<code>config_a</code>); <code>[Peer]</code>'s <code>PublicKey</code> is
+the OTHER machine's public key (vps's <code>b_pub</code>). This
+asymmetry is the entire mechanism: laptop uses ITS OWN private key
+combined with vps's PUBLIC key to derive their shared tunnel secret
+(the X25519 exchange, Section 1) — and vps, symmetrically, uses ITS OWN
+private key combined with laptop's public key to derive the IDENTICAL
+shared secret, without either private key ever being transmitted
+anywhere — precisely Module 00a Section 7's Diffie-Hellman story, now
+implemented with real, production-grade elliptic curve cryptography
+instead of toy numbers.</p>
+
+<h2 id="sec9">9. What Wireshark Shows (And Doesn't), Precisely Explained</h2>
+
+<div class="scenario">
+<h4>Precisely what's visible vs. hidden in a captured WireGuard packet</h4>
+<p><strong>Visible (unencrypted, necessarily):</strong> the OUTER UDP
+packet's own IP header (real source/destination IP addresses — WireGuard
+cannot hide WHO is talking to WHOM at the network level, only WHAT
+they're saying) and UDP header (port 51820, this module's own configured
+<code>ListenPort</code>).</p>
+<p><strong>Hidden (encrypted):</strong> EVERYTHING inside the UDP
+payload — the entire INNER packet (which, per Step 3's own tunnel
+design, would itself be a complete IP packet, e.g. an ICMP ping destined
+for <code>10.10.0.2</code>) is encrypted as an opaque blob. This is
+precisely why this module's own Step 4 confirms you'll see UDP packets
+between the two REAL IPs but nothing resembling the actual ping — the
+entire inner IP/ICMP structure is indistinguishable from random noise to
+an observer without the correct decryption key, a direct, visible
+contrast to Module 02's fully-readable plaintext HTTP capture.</p>
+</div>
+
+<h2 id="sec10">10. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming a VPN hides the FACT that you're using
+a VPN at all.</strong> Section 9 is precise about this: the OUTER packet
+headers (real source/destination IPs, the UDP port) remain fully
+visible to anyone observing the real network path — an observer cannot
+read WHAT you're doing through the tunnel, but CAN typically observe
+THAT you have an active, ongoing UDP conversation with a specific
+address on WireGuard's characteristic port, which is itself a real,
+observable fact (relevant to more advanced discussions of traffic
+analysis and censorship circumvention, genuinely beyond this module's
+core scope, but worth knowing this distinction exists).
+</div>
+
+<div class="scenario">
+<h4>Confusion: "why does the ping target 10.10.0.2, not either machine's real IP?"</h4>
+<p>10.10.0.0/24 is the TUNNEL's own private address space, created
+entirely by WireGuard itself and existing NOWHERE on your real network
+(exactly this module's own Step 3 callout) — it has no relationship at
+all to either machine's real LAN address. Pinging the TUNNEL address
+specifically forces the ICMP traffic to be routed INTO the WireGuard
+interface (per the tunnel's own Address/AllowedIPs configuration,
+Section 3) rather than directly across the real network — this is the
+only way to actually exercise and prove the tunnel is doing real work,
+as opposed to pinging the other machine's real IP, which would simply
+travel the ordinary, unencrypted network path and prove nothing about
+the tunnel at all.</p>
+</div>
+
+<h2 id="sec11">11. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 12, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Explain X25519 as elliptic-curve Diffie-Hellman, connecting it
+directly to Module 00a's toy DH exchange's shared structure.</li>
+<li>Explain precisely why WireGuard uses key PAIRS rather than a shared
+secret, and why that solves a real bootstrapping problem.</li>
+<li>Explain AllowedIPs' TWO simultaneous jobs (outbound routing AND
+inbound source-address authorization) and why "Cryptokey Routing" is a
+more precise name than "routing."</li>
+<li>Explain TCP-over-TCP meltdown precisely enough to justify WHY
+WireGuard chooses UDP, not just state that it does.</li>
+<li>Explain PersistentKeepalive's purpose by directly citing Module 10's
+NAT state-timeout mechanism.</li>
+<li>State precisely what a network observer CAN and CANNOT see in a
+captured WireGuard packet.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 12 moves to wireless (802.11/WPA2/WPA3), which uses
+a DIFFERENT key-derivation approach (PBKDF2 from a passphrase, rather
+than WireGuard's key-pair model) — understanding WHY WireGuard chose
+its particular approach here will make the contrast in Module 12
+meaningful rather than just another set of facts to memorize.</p>
+
+</body>
+</html>

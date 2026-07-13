@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 11 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 11 — Deep Theory: WireGuard's Handshake and Commands, From Zero</h1>
+
+<h2>1. Command-by-Command</h2>
+
+<h3><code>wg-quick up ./laptop.conf</code></h3>
+<p><strong>What it actually does, step by step:</strong>
+<code>wg-quick</code> is a convenience wrapper script around the lower-level
+<code>wg</code> tool and standard OS networking commands. It (1) creates a
+new virtual network interface (typically named <code>wg0</code>), (2)
+loads your config file's <code>[Interface]</code> section (your private
+key, your tunnel-internal IP address) onto that interface, (3) loads each
+<code>[Peer]</code> section (their public key, their real-world
+<code>Endpoint</code>, and <code>AllowedIPs</code> defining which
+destination IPs should be routed through this tunnel), and (4) adds
+routing table entries so traffic to those <code>AllowedIPs</code> gets
+sent out the new <code>wg0</code> interface instead of your normal
+default route. <strong>Why this matters:</strong> nothing here is magic
+— it's the same interface creation and routing table manipulation Module
+05's routing theory already covered, just automated by one convenience
+command.</p>
+
+<h3><code>ping 10.10.0.2</code> (the tunnel address, Step 3)</h3>
+<p><strong>Why this proves the tunnel actually works, mechanically:</strong>
+<code>10.10.0.0/24</code> exists NOWHERE on your real physical/Wi-Fi
+network — it's an address space WireGuard itself creates, purely virtual,
+existing only because both machines' <code>wg-quick up</code> commands
+added routing entries for it. A successful ping here means your OS's
+routing table correctly sent the ICMP packet to the <code>wg0</code>
+interface (per Step 1's routing table addition), WireGuard's driver
+encrypted and re-wrapped it as a UDP packet to the peer's REAL endpoint
+address, the peer's WireGuard driver decrypted it and delivered it to
+ITS <code>wg0</code> interface, and its own OS correctly recognized
+<code>10.10.0.2</code> as one of its own addresses and replied — a
+complete, real, multi-step round trip through the tunnel, not a
+simulation.</p>
+
+<h2>2. The Noise Protocol Framework, at a Conceptual Level</h2>
+<p>WireGuard doesn't invent its own handshake protocol from scratch — it
+implements a specific, pre-defined "handshake pattern" from the Noise
+Protocol Framework (a formal specification for building secure
+handshakes from composable building blocks, itself independently
+analyzed by cryptographers). Specifically, WireGuard uses Noise's
+<code>IK</code> pattern: both peers already know each other's static
+public keys in advance (from the config files — this is exactly why
+<code>wg_config_generator.py</code> hardcodes both sides' public keys
+into each other's config, rather than negotiating identity during the
+handshake itself), and the handshake's job is purely to establish a
+FRESH, ephemeral session key for THIS particular session, while
+authenticating both sides using their already-known static keys.</p>
+
+<div class="why">
+<strong>Why does this differ from Module 00a's raw Diffie-Hellman demo?</strong>
+Module 00a's DH demo established a shared secret with ZERO
+authentication — either party in that demo could have been an
+impersonator, and the protocol would never notice. WireGuard's Noise IK
+handshake performs DH key exchange (conceptually the same mathematical
+operation, using X25519 elliptic curve DH rather than the toy modular
+exponentiation from Module 00a) COMBINED with proving possession of a
+known, pre-configured private key — solving exactly the authentication
+gap Module 00a's deep theory flagged as raw DH's core weakness.
+</div>
+
+<h2>3. Why UDP, Despite Wanting Reliable Delivery (Exercise 3's Answer, Formalized)</h2>
+<p>The traffic RIDING INSIDE a WireGuard tunnel might itself be TCP
+(needing reliability) — but the TUNNEL PROTOCOL ITSELF doesn't need to
+duplicate that reliability at its own layer, for a specific reason:
+TCP-over-TCP (running a TCP-based tunnel carrying TCP traffic inside it)
+produces a well-documented pathological interaction called "TCP
+meltdown" — the inner TCP connection's own retransmission/congestion
+control logic fights against the outer tunnel TCP connection's
+retransmission/congestion control logic, each unaware of the other,
+producing dramatically WORSE performance than either layer alone would.
+UDP, having no such built-in reliability/congestion machinery to
+conflict, avoids this entirely — the inner protocol's own reliability
+mechanism (if any) operates cleanly, with the tunnel just carrying
+opaque encrypted bytes without adding a second, conflicting reliability
+layer on top.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>wg-quick's interface + routing table automation</td><td>Module 05's routing theory, applied to a real virtual interface</td></tr>
+<tr><td>Noise IK pattern (pre-shared static keys + fresh ephemeral session key)</td><td>Module 13's TLS handshake (a conceptually similar "prove identity, establish fresh session key" pattern)</td></tr>
+<tr><td>TCP-over-TCP meltdown</td><td>General VPN/tunneling protocol design literacy</td></tr>
+<tr><td>X25519 as a concrete Diffie-Hellman instantiation</td><td>Direct callback to Module 00a's abstract DH theory</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
