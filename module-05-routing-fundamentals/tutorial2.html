@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 05 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 05 — Deep Theory: Routing Algorithms, Command by Command</h1>
+
+<h2>1. Command-by-Command: Reading Your Own Router's Table</h2>
+
+<h3><code>route print</code> (Windows) / <code>netstat -rn</code> or <code>ip route</code> (Mac/Linux)</h3>
+<p><strong>What each does:</strong> asks your OS kernel to print its OWN
+routing table — the same conceptual structure <code>static_routing.py</code>'s
+<code>Router</code> class models, but this is the REAL table your machine
+consults for every single packet it sends. <code>netstat -rn</code>'s
+<code>-r</code> flag means "show routing table" (netstat's default without
+flags shows active connections, a completely different report) and
+<code>-n</code> means "show numeric addresses, don't resolve hostnames" —
+without <code>-n</code>, netstat would try to reverse-DNS-lookup every
+address in the table, which is slow and usually shows you less useful
+information than the raw IP. <code>ip route</code> is the modern Linux
+replacement for the older, now-deprecated <code>route</code> command,
+part of the <code>iproute2</code> toolset.</p>
+<div class="why">
+<strong>Why will you see a 0.0.0.0 destination in your own table?</strong>
+That's your default route — literally the same <code>0.0.0.0/0</code>
+entry <code>static_routing.py</code>'s R1 has, pointing at your gateway.
+Every packet whose destination doesn't match any more specific route in
+your table falls through to this entry, exactly like the Step 1 trace to
+<code>8.8.8.8</code> demonstrated.
+</div>
+
+<h2>2. Longest-Prefix Match, Formally</h2>
+<p>When multiple routes in a table could all technically match a given
+destination address, the router ALWAYS selects the one with the MOST
+specific (longest) prefix — never the first one added, never based on
+any other tiebreaker. This is not a convention or a "best practice"; it's
+a hard requirement of every IP routing implementation, because it's the
+only rule that makes route summarization (Exercise 3) and default routes
+coexist sensibly: a <code>0.0.0.0/0</code> default route matches
+LITERALLY EVERY address, but a router with any more specific route for a
+given destination must prefer that more specific route, or default
+routes would make all other routing entries pointless.</p>
+
+<h2>3. Bellman-Ford, Formally (What RIP Actually Runs)</h2>
+<p>RIP implements the Bellman-Ford algorithm for finding shortest paths in
+a graph. The core relaxation step: for each neighbor's advertised
+distance to a destination, compute (neighbor's advertised distance + cost
+of the link to that neighbor); if this is BETTER than your current known
+distance to that destination, adopt it. Run this repeatedly across all
+routers until nothing changes ("convergence"). This is provably correct
+for a STATIC graph with no failures — the bug this module's own build
+hit (see tutorial.html's callout) arose specifically from a subtlety
+Bellman-Ford's textbook description doesn't address: what happens when
+the graph CHANGES (a link fails) after the algorithm already converged.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why is Bellman-Ford's
+standard 'only accept a strictly better distance' relaxation rule
+insufficient for a REAL, dynamically-changing network, and what's the
+minimal fix?" The textbook algorithm assumes the graph is fixed while it
+runs — it has no concept of "this route I'm currently using just got
+worse." A router whose current path degrades will never revise away from
+it under strict relaxation, because the new (worse) distance is never
+"better than current." The minimal fix: a router must unconditionally
+accept updates from whichever neighbor is its CURRENT next-hop for a
+destination, even when the update is worse — because that neighbor IS
+the router's sole source of truth for that specific route, not one
+alternative among many to be compared.
+</div>
+
+<h2>4. Why Split Horizon Isn't Always Enough (Exercise 2's Real Answer)</h2>
+<p>Split horizon (never advertise a route back to the neighbor you learned
+it from) fully solves the 2-router ping-pong this module demonstrated —
+but with a THIRD router providing a genuine alternate path (a triangle
+topology), a more subtle failure mode remains possible: Router A might
+advertise a route to Router C that A itself learned from Router B, and
+Router C might advertise a DIFFERENT (also stale) route back that
+eventually loops through B again via a path split horizon's simple
+"don't tell the neighbor you learned it from" rule doesn't catch, because
+the stale information is now traveling through a THIRD party rather than
+bouncing directly between two routers. "Split horizon with poison
+reverse" (explicitly advertising a now-unreachable route back as
+INFINITY, rather than just omitting it) closes more of this gap by making
+the "this route is dead" information propagate explicitly and immediately
+along more paths, rather than requiring it to be inferred from an absence.</p>
+
+<h2>5. Dijkstra's Algorithm, Formally (What OSPF Actually Runs)</h2>
+<p>Given a complete graph (every router has flooded its own direct links
+to every other router, so everyone has an IDENTICAL copy of the full
+topology), Dijkstra's algorithm computes shortest paths from one starting
+node to every other node by maintaining a set of "settled" nodes (shortest
+path definitively known) and repeatedly selecting the closest unsettled
+node, relaxing its neighbors' distances, until every node is settled.
+Unlike Bellman-Ford, Dijkstra requires the FULL graph structure up front
+— it cannot operate on partial, neighbor-summarized information the way
+distance-vector protocols do, which is PRECISELY why link-state protocols
+don't have a count-to-infinity failure mode: there's no summarized
+intermediate belief to go stale, because every router computes directly
+from the complete, freshly-flooded topology every time.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Longest-prefix match</td><td>Module 06's real IOS `show ip route`, Module 09's home lab firewall routing</td></tr>
+<tr><td>Bellman-Ford relaxation, count-to-infinity</td><td>General distributed-systems literacy — this exact class of bug appears in any eventually-consistent distributed protocol</td></tr>
+<tr><td>Dijkstra / link-state flooding</td><td>Module 06's OSPF configuration (if pursued), general graph-algorithm literacy</td></tr>
+<tr><td>Route summarization + longest-prefix coexistence</td><td>Module 17's cloud VPC route tables</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

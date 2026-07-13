@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 05 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 05 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to trace
+longest-prefix-match forwarding by hand, execute Bellman-Ford relaxation
+round by round on a real topology, explain exactly WHY count-to-infinity
+happens mechanically (not just that it happens), trace Dijkstra's
+algorithm step by step, and articulate the structural reason link-state
+routing avoids the count-to-infinity failure mode entirely.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">Longest-prefix match, traced completely on real routes</a></li>
+<li><a href="#sec2">The static routing table, and what "connected" vs. "static" means</a></li>
+<li><a href="#sec3">Bellman-Ford / distance-vector routing, from first principles</a></li>
+<li><a href="#sec4">Count-to-infinity, traced round by round with real numbers</a></li>
+<li><a href="#sec5">Split horizon and poison reverse — the fix, and its limits</a></li>
+<li><a href="#sec6">Dijkstra's algorithm, traced completely on the 3-router topology</a></li>
+<li><a href="#sec7">Why link-state structurally cannot count to infinity</a></li>
+<li><a href="#sec8">Full code walkthrough — the DVRouter.receive() fix, dissected</a></li>
+<li><a href="#sec9">Full code walkthrough — static_routing.py's packet trace</a></li>
+<li><a href="#sec10">Troubleshooting and common confusions</a></li>
+<li><a href="#sec11">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. Longest-Prefix Match, Traced Completely On Real Routes</h2>
+
+<p>Every router — static, RIP, OSPF, your home router, a $500,000 core
+internet router — uses EXACTLY ONE rule to pick a winner when multiple
+routing table entries could match a destination: the MOST SPECIFIC
+(longest prefix / highest <code>/N</code>) match wins, regardless of
+what else matches or in what order routes were added.</p>
+
+<div class="scenario">
+<h4>Worked scenario: R1's own routing table, and why 198.51.100.0/24 wins over 0.0.0.0/0 for the Server destination</h4>
+<pre>R1's routing table (from this module's own build_topology()):
+  192.0.2.0/24      directly connected     iface eth0
+  10.0.12.0/30      directly connected     iface eth1
+  198.51.100.0/24   via 10.0.12.2          iface eth1
+  0.0.0.0/0         via 203.0.113.1        iface eth2   (default route)
+
+Destination: 198.51.100.20
+
+Check EVERY route for a match (dest AND route's own mask == route's network):
+  192.0.2.0/24:    198.51.100.20 AND 255.255.255.0 = 198.51.100.0
+                   route's network is 192.0.2.0 -- NO MATCH
+  10.0.12.0/30:    198.51.100.20 AND 255.255.255.252 = 198.51.100.20
+                   route's network is 10.0.12.0 -- NO MATCH
+  198.51.100.0/24: 198.51.100.20 AND 255.255.255.0 = 198.51.100.0
+                   route's network IS 198.51.100.0 -- MATCH (prefix 24)
+  0.0.0.0/0:       198.51.100.20 AND 0.0.0.0 = 0.0.0.0
+                   route's network IS 0.0.0.0 -- MATCH (prefix 0)
+
+TWO routes matched: /24 and /0. Longest prefix wins: /24 (198.51.100.0/24)
+beats /0 (0.0.0.0/0) because 24 > 0.
+
+Winner: 198.51.100.0/24 via 10.0.12.2</pre>
+<p>This EXACTLY matches this module's own <code>Router.lookup()</code>
+implementation: <code>candidates</code> collects EVERY matching route
+(both matched here), and <code>max(candidates, key=lambda r:
+r["prefix"])</code> picks the one with the highest prefix length among
+them — a direct, literal implementation of "most specific route wins."</p>
+</div>
+
+<div class="why">
+<strong>Why does a default route (0.0.0.0/0) ALWAYS match everything,
+mechanically?</strong> A /0 mask is ALL ZEROS — meaning ZERO bits are
+required to match for network membership. ANDing ANY destination address
+against an all-zero mask ALWAYS produces 0.0.0.0, which always equals
+the default route's own network address (also 0.0.0.0) — this is
+precisely why a default route acts as the universal "catch everything
+nothing more specific matched" fallback: mathematically, it's
+GUARANTEED to match any address at all, making it the correct mechanism
+for "send this out to the internet/wherever, since I have no more
+specific idea where it goes."
+</div>
+
+<h2 id="sec2">2. The Static Routing Table, And What "Connected" vs. "Static" Means</h2>
+
+<p>This module's own <code>Router</code> class distinguishes two route
+TYPES, both real, standard terminology: a CONNECTED route
+(<code>add_connected_route()</code>) describes a network the router is
+DIRECTLY, physically attached to via one of its own interfaces — R1
+"knows" about <code>192.0.2.0/24</code> not because anyone configured
+it explicitly as a destination, but because R1's own interface HAS an
+IP address on that network, which automatically implies the whole
+network is reachable via that interface with zero additional hops. A
+STATIC route (<code>add_static_route()</code>) describes a network the
+router is NOT directly attached to, reachable only by forwarding to some
+OTHER router (the "next hop") — this genuinely IS manually configured,
+by a human (or, in later modules, a routing PROTOCOL) explicitly telling
+the router "to reach X, send it to Y."</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does the trace_packet()
+function treat 'connected' routes as an immediate DELIVERY, while
+'static' routes trigger a continued hop to another router?" A connected
+route means the destination network is on the SAME physical/logical
+segment as this router's own interface — no further forwarding decision
+is needed; the packet simply needs to be delivered locally (via ARP, per
+Module 01/03's mechanism) to its final destination on that segment. A
+static (non-connected) route means the destination is REACHABLE but not
+LOCAL — the packet must be forwarded, unchanged, to the specified next
+hop, which will then make its OWN independent forwarding decision (this
+is precisely the hop-by-hop, "each router only knows the NEXT step, not
+the whole path" nature of IP routing, directly echoing Module 01
+Section 5's packet-journey narrative).
+</div>
+
+<h2 id="sec3">3. Bellman-Ford / Distance-Vector Routing, From First Principles</h2>
+
+<p>The Bellman-Ford algorithm (which RIP implements) is built on a
+disarmingly simple idea called RELAXATION: if I know my current best
+distance to some destination is X, and a NEIGHBOR tells me THEIR
+distance to that same destination is Y, then I could potentially reach
+that destination via THEM at cost <code>Y + (cost of the link to that
+neighbor)</code>. If that's BETTER (smaller) than my current X, update
+my table to use them as the next hop, at the new, better cost.</p>
+
+<div class="scenario">
+<h4>Worked scenario: R1's initial convergence to R3, traced by hand, matching Part 1's real output</h4>
+<pre>Topology: R1 --(cost 1)-- R2 --(cost 1)-- R3
+
+Initial state (before any rounds):
+  R1's table: R1=0, R2=1 (direct neighbor)   -- R1 knows NOTHING about R3 yet
+  R2's table: R2=0, R1=1, R3=1 (both direct neighbors)
+  R3's table: R3=0, R2=1
+
+Round 1: every router advertises its CURRENT table to its neighbors.
+  R2 advertises {R1:1, R2:0, R3:1} to R1.
+  R1 RECEIVES this from R2, applies relaxation for R3:
+    candidate = R2's metric to R3 (1) + link cost R1-R2 (1) = 2
+    R1's current entry for R3: doesn't exist yet (implicitly infinity)
+    2 < infinity -- ACCEPT: R1's table now has R3=2, next_hop=R2
+
+After round 1: R1->R3 = 2 (matches this module's own printed output:
+  "round 1: R1->R3=2, R2->R3=1")</pre>
+<p>This is EXACTLY the mechanism <code>DVRouter.receive()</code>
+implements — each router only ever learns about DESTINATIONS, not the
+actual PATH or TOPOLOGY — R1 has no idea R3 is reachable "via R2 then
+directly" versus some other arrangement; it only knows "R2 says
+distance 1, so via R2 it's 2." This SUMMARY-ONLY nature (Section 4/7's
+core theme) is the root cause of everything that goes wrong later.</p>
+</div>
+
+<h2 id="sec4">4. Count-To-Infinity, Traced Round By Round With Real Numbers</h2>
+
+<div class="scenario">
+<h4>The full failure, traced completely, matching this module's own real (tested) output</h4>
+<pre>Starting state (converged, before failure): R1->R3=2 (via R2), R2->R3=1 (direct)
+
+THE FAILURE: the R2-R3 link breaks. R2 immediately knows (it's R2's OWN
+direct link) and sets R2->R3 = infinity(16) locally. But R1 does NOT yet
+know anything changed -- R1's table STILL says R1->R3=2 via R2, from
+before the break.
+
+Round 1 after the break:
+  R2 advertises its NEW table (R3=16) to R1.
+  R1 receives this from R2. Is R2 R1's CURRENT next-hop for R3? YES
+  (R1 was routing via R2). So R1 MUST accept the update (the "accept
+  even if worse, from your current next-hop" rule this module's own
+  bug fix required):
+    candidate = 16 + 1 = 16 (capped at INFINITY)...
+
+  WAIT -- here's the actual bug's subtlety: in the FIRST few rounds,
+  the numbers don't jump straight to infinity, because R1 ALSO
+  advertises ITS (stale) R3=2 back to R2 in the SAME round (both
+  routers exchange simultaneously, before either has processed the
+  other's update yet):
+
+  R2 receives R1's STALE advertisement (R3=2) in the same round:
+    candidate = 2 + 1 = 3
+    Is R1 R2's current next-hop for R3? NO (R2 has no next-hop for R3
+    anymore -- it was direct). Is 3 < R2's current infinity? YES.
+    R2 WRONGLY accepts: R2's table now says R3=3 via R1!
+
+  This is the ACTUAL count-to-infinity mechanism: R2, having lost its
+  real path, ends up "believing" R1's stale, circular information
+  (which itself originally came FROM R2 in the first place) -- each
+  router slowly, incorrectly convinces the other that a path exists
+  by bouncing a stale number back and forth, each hop adding +1 to the
+  cost, until the number finally climbs high enough to hit INFINITY
+  (16) and both correctly converge on "unreachable."</pre>
+</div>
+
+<div class="why">
+<strong>Why does the number climb SLOWLY (roughly 14 rounds, per this
+module's own confirmed output) rather than jumping immediately to
+infinity?</strong> Because neither router has any way to tell the
+difference between "a genuinely NEW, better route just appeared" and "a
+STALE number is bouncing back from the very router that originally
+taught it to me." Each router can only see a NUMBER from a neighbor,
+never the REASONING or PATH behind that number — this is the single
+most important structural fact about distance-vector routing (directly
+answering the framing question Section 7 revisits): the metric alone is
+NOT enough information to detect this kind of circular, stale
+dependency, so the two routers keep "raising the bid" on a route that
+no longer exists, one hop-cost increment at a time, until the process
+mechanically terminates only because INFINITY (16) acts as a hard
+ceiling — without that ceiling, the count would climb forever.
+</div>
+
+<h2 id="sec5">5. Split Horizon and Poison Reverse — The Fix, And Its Limits</h2>
+
+<h3>5.1 — Split horizon, precisely</h3>
+<p><code>advertisement_for()</code>'s split-horizon check —
+<code>if split_horizon and entry["next_hop"] == neighbor: continue</code>
+— implements a simple, powerful rule: NEVER advertise a route back to
+the exact neighbor you originally learned that route FROM. This directly
+prevents the specific failure traced in Section 4: R1 would never
+advertise "R3=2" back to R2, because R1 learned that route FROM R2 in
+the first place — eliminating exactly the stale, circular bounce-back
+that caused the slow climb.</p>
+
+<h3>5.2 — Why split horizon alone isn't always sufficient (setting up Exercise 2)</h3>
+<div class="scenario">
+<h4>Scenario: why a THIRD router with a redundant path can defeat plain split horizon</h4>
+<p>Split horizon only prevents a router from advertising a route back to
+the SAME neighbor it came from — it does NOTHING to prevent a
+THREE-OR-MORE router loop, where router A learned a route from B, and
+router C (a DIFFERENT neighbor, with its own now-also-stale information
+originally sourced indirectly from the same failure) advertises a
+seemingly independent, but actually equally-stale, path back toward A.
+This is exactly why Exercise 2 asks you to add a redundant R1-R3 direct
+link (making a triangle) — with three routers all interconnected, simple
+split horizon (which only looks at PAIRS of routers) can, in some
+topologies, still allow a slower version of the same stale-information
+bounce to occur across the longer loop.</p>
+</div>
+
+<h3>5.3 — Poison reverse, precisely</h3>
+<p>POISON REVERSE is a strictly STRONGER variant: instead of simply
+OMITTING a route when advertising back toward its source (silence,
+which the receiving router might misinterpret in various ways), you
+EXPLICITLY advertise that route back as INFINITY (unreachable) — an
+active, unambiguous statement rather than an absence of information.
+This closes gaps plain split horizon can leave in more complex
+topologies (like a triangle) precisely because it removes any ambiguity
+about "did they just not mention this route, or do they genuinely not
+have it" — an explicit "this is unreachable" statement can't be
+misinterpreted the way silence sometimes can in more complex,
+multi-router loop scenarios.</p>
+
+<h2 id="sec6">6. Dijkstra's Algorithm, Traced Completely On The 3-Router Topology</h2>
+
+<div class="scenario">
+<h4>Full trace: dijkstra(links, source="R1") on the intact 3-router chain</h4>
+<pre>graph = {R1: {R2:1}, R2: {R1:1, R3:1}, R3: {R2:1}}
+
+Initialize: dist = {R1: 0}, prev = {R1: None}, heap = [(0, R1)]
+
+Pop (0, R1) from heap. Mark R1 visited.
+  Examine R1's neighbors: R2 (cost 1)
+    new_distance = 0 + 1 = 1
+    1 < infinity (R2 not yet in dist) -- ACCEPT
+    dist[R2] = 1, prev[R2] = R1
+    push (1, R2) onto heap
+
+Pop (1, R2) from heap. Mark R2 visited.
+  Examine R2's neighbors: R1 (cost 1), R3 (cost 1)
+    R1: new_distance = 1+1=2. Is 2 < dist[R1]=0? NO -- reject (R1 already
+        visited/finalized with a better distance anyway)
+    R3: new_distance = 1+1=2. R3 not yet in dist -- ACCEPT
+        dist[R3] = 2, prev[R3] = R2
+        push (2, R3) onto heap
+
+Pop (2, R3) from heap. Mark R3 visited.
+  Examine R3's neighbors: R2 (already visited, skip consideration)
+
+Heap empty -- DONE.
+
+Final: dist = {R1:0, R2:1, R3:2}, prev = {R1:None, R2:R1, R3:R2}
+
+This EXACTLY matches this module's own printed output:
+  "R1's shortest-path table: {'R1': 0, 'R2': 1, 'R3': 2}"</pre>
+</div>
+
+<div class="brain">
+<strong>Brain power:</strong> why does Dijkstra use a PRIORITY QUEUE
+(Python's <code>heapq</code>) rather than just checking every node in a
+simple loop? Because the algorithm's core correctness guarantee depends
+on always processing the CLOSEST unvisited node NEXT — once a node is
+popped from the priority queue (guaranteed to be the minimum-distance
+entry currently in the queue), its distance is FINAL and will never be
+improved later, which is what allows the algorithm to mark it "visited"
+and never reconsider it. A priority queue gives efficient O(log n)
+access to "the current minimum," which is precisely the operation this
+algorithm needs to repeat at every step — this is a genuine, real reason
+Dijkstra is implemented this specific way, not an arbitrary
+implementation choice.
+</div>
+
+<h2 id="sec7">7. Why Link-State Structurally Cannot Count To Infinity</h2>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Give the precise structural
+reason (not 'it's a better protocol') why link-state routing does not
+exhibit count-to-infinity." Distance-vector routing (Section 3-4) has
+each router share only a SUMMARY (a distance number) with neighbors,
+never the underlying topology reasoning — this means a router receiving
+bad news (a link failure) cannot distinguish a neighbor's FRESH,
+accurate report from a STALE report that indirectly, circularly
+originated from the router itself. Link-state routing eliminates this
+entire failure category by construction: every router floods its OWN
+RAW, UNSUMMARIZED direct-link information (an LSA — Link State
+Advertisement) to EVERY OTHER router, unchanged, and every router
+independently computes shortest paths (via Dijkstra) over the SAME
+complete topology graph. There is NO intermediate summarization step
+where stale, circular information could be mistaken for new information
+— when a link breaks, the news that propagates is "this specific edge no
+longer exists in the graph," an unambiguous FACT, not a derived,
+lossy metric that could be reinterpreted incorrectly. This module's own
+Part 2 output demonstrates this directly: the moment the broken link's
+news is flooded, EVERY router's Dijkstra recomputation immediately and
+correctly reports R3 as unreachable, with no intermediate oscillating
+rounds at all.
+</div>
+
+<h2 id="sec8">8. Full Code Walkthrough — The DVRouter.receive() Fix, Dissected</h2>
+
+<pre>is_current_path = current["next_hop"] == from_neighbor
+if candidate < current["metric"] or (is_current_path and candidate != current["metric"]):
+    self.table[dest] = {"metric": candidate, "next_hop": from_neighbor}
+    changed = True</pre>
+<p>This single line's OR condition captures TWO genuinely different
+reasons to accept an update, and understanding both is the entire point
+of this module's own documented bug-and-fix:</p>
+<ul>
+<li><strong><code>candidate < current["metric"]</code></strong> — the
+STANDARD Bellman-Ford relaxation rule: "this is a strictly BETTER path
+than what I currently have, from ANY neighbor, accept it." This alone is
+what the FIRST (buggy) version of this code had.</li>
+<li><strong><code>is_current_path and candidate != current["metric"]</code></strong>
+— the FIX: "even if this update is WORSE (or just different), if it's
+coming from the neighbor I'm CURRENTLY relying on for this route, I
+must trust and adopt their new number, because they ARE my source of
+truth for this destination — continuing to trust my own OLD, possibly
+now-completely-wrong number over THEIRS would mean I never learn about
+a failure at all." Without this second condition, R1 would have kept
+believing "R3 is 2 hops away via R2" FOREVER, even after the link
+genuinely broke — a permanently, silently WRONG routing table, which
+this module's own DECISIONS.md correctly identifies as objectively worse
+than a visibly-oscillating count-to-infinity bug (at least
+count-to-infinity eventually self-corrects to the right answer;
+permanently stale routing never does).</li>
+</ul>
+
+<h2 id="sec9">9. Full Code Walkthrough — static_routing.py's Packet Trace</h2>
+
+<pre>if route["cidr"] == "0.0.0.0/0" and route["next_hop"] not in ip_owner:
+    print(f"  {current}: default route -- packet EXITS this topology toward {route['next_hop']} (the wider internet)")
+    return</pre>
+<p><code>ip_owner</code> is a dictionary mapping every KNOWN interface IP
+address (within this simulated topology) back to which router owns it —
+built once in <code>build_topology()</code> via
+<code>{ip: name for name, r in routers.items() for ip in r.own_ips}</code>.
+Checking <code>route["next_hop"] not in ip_owner</code> is precisely how
+this simulation detects "this next hop isn't actually one of my
+simulated routers at all" — R1's default route points to
+<code>203.0.113.1</code>, an address that was NEVER assigned to any
+router in this topology (deliberately — it represents "somewhere out on
+the real internet," per this module's own comment), so the trace
+correctly reports the packet as EXITING the simulated world rather than
+incorrectly trying to continue tracing into a router that doesn't
+exist.</p>
+
+<h2 id="sec10">10. Troubleshooting and Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming a router "knows" the full path to a
+destination, the way a human reading a map would.</strong> Every routing
+mechanism in this module — static, RIP, even OSPF's Dijkstra computation
+— ultimately only tells a router "what is my NEXT HOP for this
+destination," never "here is the complete, ordered list of every router
+this packet will pass through." Even OSPF, despite having the FULL
+topology graph available, only USES that graph to compute its own
+next-hop decision — it doesn't embed a full path in the packet itself
+(unlike, for contrast, source-routing schemes, which are a different,
+much less common approach). This is precisely why
+<code>trace_packet()</code> has to loop, re-querying EACH router's OWN
+independent routing table one hop at a time, rather than computing the
+whole path once from R1's perspective alone.
+</div>
+
+<div class="scenario">
+<h4>Confusion: "if split horizon prevents R1 from advertising R3's route back to R2, how does R2 EVER learn the correct 'unreachable' answer?"</h4>
+<p>R2 doesn't need to learn it FROM R1 at all — R2 already knows
+directly, immediately, the instant its own R2-R3 link physically breaks
+(<code>routers["R2"].table["R3"] = {"metric": INFINITY, "next_hop":
+None}</code>, set directly in this module's own simulation code, mirroring
+how a real router detects its own interface going down). Split horizon's
+job isn't to teach R2 anything — it's to prevent R1 from ACCIDENTALLY
+misleading R2 with stale information R1 itself is no longer even
+confident about. R2's own correct, direct knowledge of the break is
+what ultimately propagates correctly to R1 (R2 legitimately advertises
+"R3=infinity" to R1, and R1 correctly accepts it because R2 IS R1's
+current next-hop for that route).</p>
+</div>
+
+<h2 id="sec11">11. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 06, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Trace longest-prefix-match forwarding by hand on a routing table
+with multiple overlapping matches, correctly identifying the winner.</li>
+<li>Execute Bellman-Ford relaxation round by round on a small topology,
+by hand, including a link failure.</li>
+<li>Explain, mechanically (not just "it's a known bug"), why
+count-to-infinity happens — specifically, why a router cannot
+distinguish fresh information from stale, circularly-derived information
+using only a metric number.</li>
+<li>State split horizon's exact rule and explain a scenario (more than 2
+routers) where it alone is insufficient, motivating poison reverse.</li>
+<li>Trace Dijkstra's algorithm completely by hand on a small graph,
+including the priority-queue pop order.</li>
+<li>Give the precise structural (not just qualitative) reason link-state
+routing avoids count-to-infinity entirely.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 06 puts these exact concepts into a visual topology
+tool (Packet Tracer) with real Cisco IOS commands, and assumes you
+already understand WHY the routing tables you'll see there look the way
+they do, not just how to read the tool's output.</p>
+
+</body>
+</html>

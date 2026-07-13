@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 05 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 05 — Tutorial</h1>
+<p>Goal: trace a packet through hand-built static routes, then watch the
+exact moment distance-vector routing (RIP) can lie to itself — and see why
+link-state routing (OSPF) structurally can't make that mistake.</p>
+
+<h2>Step 1 — static routing and longest-prefix match</h2>
+<pre>cd module-05-routing-fundamentals
+python static_routing.py</pre>
+<div class="expect"><strong>Expected:</strong> three routing tables printed
+(R1, R2, R3), then four traced packets. Watch the third trace especially —
+a packet to <code>8.8.8.8</code> matches nothing specific on R1, falls
+through to its <code>0.0.0.0/0</code> default route, and "exits the
+topology" — this is literally what your home router does with every
+packet you send to the internet.</div>
+<pre>node static_routing.js</pre>
+<div class="expect">Identical trace output (verified during this module's
+build with a byte-diff, modulo Windows line-ending differences).</div>
+
+<h2>Step 2 — RIP's count-to-infinity, actually happening</h2>
+<pre>python routing_protocols_sim.py</pre>
+<div class="expect"><strong>Expected:</strong> Part 1 shows a 3-router chain
+converge normally, then a broken link causes R1 and R2's metric to R3 to
+climb — oscillating between the two routers — over roughly 14 rounds before
+finally both settle at 16 (RIP's real "infinity" constant, from RFC 2453).
+Part 1b re-runs the same failure with split-horizon enabled: convergence to
+"unreachable" happens in a single round instead.</div>
+
+<div class="note">
+<strong>This bug was real during this module's own development.</strong>
+The first version of <code>DVRouter.receive()</code> only accepted a
+neighbor's advertisement if it was strictly better than the current route —
+which is correct Bellman-Ford relaxation, but ALSO meant a router never
+revised a stale route that had gotten worse via its own current path,
+producing permanently wrong (not just slowly wrong) routing tables. The fix
+was one line: if the advertisement comes from the neighbor you're currently
+routing through, you must accept their update even when it's worse, because
+they ARE your route's source of truth. Re-derive this yourself in Exercise 1
+below — it's the single most important line in the whole file.
+</div>
+
+<h2>Step 3 — OSPF's link-state approach, side by side</h2>
+<p>Still in the same run, Part 2 floods each router's own direct links to
+build a full topology graph, then runs Dijkstra locally at every router.
+Compare the "Step 3" output (after breaking the same link) to Part 1's 14
+rounds of oscillation — OSPF's version reaches the correct "unreachable"
+answer the instant the link-down news is flooded, with no intermediate bad
+state at all.</p>
+
+<h2>Step 4 — watch your own home router's route table</h2>
+<pre># Windows
+route print
+# macOS/Linux
+netstat -rn        (or: ip route)</pre>
+<div class="expect"><strong>Expected:</strong> a default route
+(<code>0.0.0.0</code> destination) pointing at your gateway — the exact
+mechanism <code>static_routing.py</code>'s Step 1c trace demonstrated. Home
+routers essentially never run RIP or OSPF themselves (both are typically
+enterprise/ISP-grade protocols) — they use exactly the static default-route
+pattern from this module, which is worth confirming on real output rather
+than taking on faith.</div>
+
+<h2>Exercises before Module 06</h2>
+<ol>
+  <li><strong>Re-derive the receive() fix yourself.</strong> Revert the
+      "accept unconditionally from current next-hop" behavior in
+      <code>DVRouter.receive()</code> (both Python and JS), re-run Part 1,
+      and confirm you get permanently-wrong routing instead of a climbing
+      count-to-infinity. Then put the fix back and explain in your own
+      words why it's necessary.</li>
+  <li><strong>Add a 4th router with a redundant path.</strong> Extend
+      <code>base_links()</code>/<code>baseLinks()</code> so R1 and R3 also
+      have a direct link (making a triangle: R1-R2-R3-R1). Re-run the
+      link-failure scenario — does split horizon alone still prevent
+      count-to-infinity with a real alternate path available, or do you
+      need "split horizon with poison reverse" (advertise the broken route
+      back as explicit infinity rather than just omitting it)? Implement
+      poison reverse if you find a case where plain split horizon isn't enough.</li>
+  <li><strong>Extend static_routing.py with route summarization.</strong>
+      Add a route on R1 for <code>198.51.0.0/16</code> (a summary covering
+      both 198.51.100.0/24 and other /24s) alongside the existing
+      <code>198.51.100.0/24</code> route, both pointing different places.
+      Confirm longest-prefix-match still picks the more specific /24 route
+      when both match — this is exactly how real ISPs use summarization
+      without breaking more-specific routing.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 06:</strong> you should be able to explain, without
+looking at the code, why link-state protocols don't have a
+count-to-infinity problem structurally (not "OSPF is just better," but the
+actual mechanical reason: no summarized information ever gets passed
+around to go stale). Module 06 moves into Cisco Packet Tracer, where you'll
+build topologies like this module's 3-router chain visually, with real
+(simulated) Cisco IOS commands, and watch <code>show ip route</code> output
+match exactly what you've been computing by hand.
+</div>
+
+</body>
+</html>
