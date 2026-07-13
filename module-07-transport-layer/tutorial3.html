@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 07 — Exam Practice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.6; color: #1a1a1a; }
+  h1 { border-bottom: 4px solid #222; padding-bottom: 10px; }
+  details { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  summary { font-weight: 600; cursor: pointer; }
+  .answer { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; font-family: "SFMono-Regular", Consolas, monospace; }
+  nav a { margin-right: 16px; }
+  .instructions { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">← Deep Theory</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 07 — Exam Practice</h1>
+<div class="instructions">Answer out loud before revealing each answer.</div>
+
+<details>
+<summary>Q1. Why can netstat/ss report a TCP connection's real state (ESTABLISHED, TIME_WAIT) even though the application code that opened the socket never explicitly tracked or requested that state?</summary>
+<div class="answer">
+<strong>A:</strong> TCP connection state is tracked entirely inside the
+OS kernel's own TCP/IP stack implementation, for every socket system-wide,
+independent of any particular application's own code. netstat/ss simply
+read and report that kernel-internal state directly -- the application
+using the socket doesn't need to track this itself because the kernel
+already does, transparently, underneath the socket API.
+</div>
+</details>
+
+<details>
+<summary>Q2. Distinguish precisely between what the sliding window mechanism solves and what congestion control solves. Why are these genuinely separate problems requiring separate mechanisms?</summary>
+<div class="answer">
+<strong>A:</strong> The sliding window (governed by the RECEIVER's
+advertised window size) prevents a sender from overwhelming the
+RECEIVER's own buffer capacity -- a problem specific to the two
+endpoints of the connection. Congestion control prevents a sender from
+overwhelming the NETWORK PATH itself (shared router buffers, link
+capacity) between sender and receiver -- a problem involving third-party
+infrastructure neither endpoint directly controls or can query the
+capacity of. A receiver with plenty of buffer space could still be
+reachable only via a congested path, and vice versa -- these are
+independent constraints requiring independent mechanisms.
+</div>
+</details>
+
+<details>
+<summary>Q3. Explain TCP slow start's exponential growth phase and why it eventually switches to linear growth (congestion avoidance) rather than continuing exponentially forever.</summary>
+<div class="answer">
+<strong>A:</strong> Slow start doubles the congestion window every
+round-trip, rapidly discovering available bandwidth without needing to
+guess a fixed rate in advance. It switches to linear (roughly +1 segment
+per round-trip) growth after reaching a threshold (or after loss)
+because continued exponential growth would likely overshoot available
+capacity significantly before the sender could react, causing a large
+burst of loss -- linear growth probes for additional available bandwidth
+much more cautiously once a reasonable estimate has already been
+established.
+</div>
+</details>
+
+<details>
+<summary>Q4. Why does classic TCP congestion control (Reno-style) treat packet loss as its primary congestion signal, and why is this assumption weaker on modern wireless networks?</summary>
+<div class="answer">
+<strong>A:</strong> On the wired networks TCP's classic congestion
+control algorithms were designed for, packet loss was overwhelmingly
+caused by router buffer overflow under genuine congestion, making loss a
+reasonably reliable proxy signal. On modern wireless links (Wi-Fi,
+cellular), packet loss frequently results from signal interference or
+quality issues entirely unrelated to actual network congestion -- meaning
+a wireless connection can trigger TCP's congestion-response behavior
+(cutting the window) even when the network path itself isn't congested
+at all, motivating newer algorithms (e.g. BBR) that estimate congestion
+from measured bandwidth/RTT changes instead of loss alone.
+</div>
+</details>
+
+<details>
+<summary>Q5. Why is TCP's Initial Sequence Number randomized rather than starting predictably (e.g., always at 0)?</summary>
+<div class="answer">
+<strong>A:</strong> A predictable ISN would let an attacker who can guess
+or predict sequence numbers inject forged data into an existing
+connection or hijack a session WITHOUT needing to actually intercept real
+traffic -- they could send a spoofed packet with a forged source address
+and a correctly-guessed sequence number, and the receiving end would
+accept it as legitimate. Randomizing the ISN (a real historical fix
+following documented sequence-prediction attacks) makes this
+dramatically harder for an off-path attacker who isn't actually observing
+the real traffic stream.
+</div>
+</details>
+
+<details>
+<summary>Q6. A colleague claims "TCP's reliability comes from the 3-way handshake." Evaluate this claim precisely.</summary>
+<div class="answer">
+<strong>A:</strong> The claim is incorrect as stated. The 3-way handshake
+establishes a CONNECTION (synchronizing initial sequence numbers and
+confirming both sides are ready) -- it does not, by itself, provide
+ongoing reliability. Reliability comes from continuous behavior
+throughout the ESTABLISHED state: sequence numbers enabling correct
+reassembly order, acknowledgments confirming receipt, and retransmission
+of unacknowledged data after a timeout. The handshake is a necessary
+SETUP step, not the reliability mechanism itself, which operates
+continuously for the connection's entire duration.
+</div>
+</details>
+
+<details>
+<summary>Q7. Synthesis: why does DNS (Module 08) use UDP by default despite UDP providing none of TCP's reliability guarantees?</summary>
+<div class="answer">
+<strong>A:</strong> A typical DNS query/response is small (fits in a
+single datagram) and the cost of occasional loss is low and simple to
+handle at the application layer -- a client that doesn't receive a
+timely reply can simply retry the query, often to a different server,
+without needing the overhead of a full TCP handshake and connection
+teardown for what's fundamentally a single small request/response
+exchange. This is exactly Module 07's Exercise 1 (building basic retry
+logic on top of UDP) -- DNS made a deliberate engineering tradeoff to
+implement only the specific reliability behavior it actually needs
+(simple retry) rather than paying for TCP's full guarantee set when most
+of it (in-order delivery of a multi-segment stream, sustained connection
+state) isn't relevant to a single-exchange query.
+</div>
+</details>
+
+</body>
+</html>

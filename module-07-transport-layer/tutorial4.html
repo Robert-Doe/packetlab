@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 07 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 07 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to draw
+TCP's complete state diagram from memory, explain precisely why the
+handshake needs exactly 3 messages (not 2, not 4), explain what
+sequence/acknowledgment numbers actually guarantee mechanically, and
+diagnose a real <code>netstat</code>/<code>ss</code> output's states
+confidently.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">Why the handshake needs exactly 3 messages</a></li>
+<li><a href="#sec2">TCP's complete state diagram, transition by transition</a></li>
+<li><a href="#sec3">Sequence and acknowledgment numbers — what they actually guarantee</a></li>
+<li><a href="#sec4">TIME_WAIT — why 2×MSL, and why it matters practically</a></li>
+<li><a href="#sec5">CLOSE_WAIT as a real diagnostic signal</a></li>
+<li><a href="#sec6">The simultaneous-close / CLOSING state, fully explained</a></li>
+<li><a href="#sec7">UDP — precisely what "no guarantees" means, with scenarios</a></li>
+<li><a href="#sec8">Full code walkthrough — tcp_state_machine.py</a></li>
+<li><a href="#sec9">Reading real netstat/ss output, field by field</a></li>
+<li><a href="#sec10">Troubleshooting and common confusions</a></li>
+<li><a href="#sec11">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. Why The Handshake Needs Exactly 3 Messages</h2>
+
+<p>TCP's connection setup requires exactly 3 messages
+(SYN → SYN-ACK → ACK) — not 2, not 4. This is a precise, derivable
+requirement, not an arbitrary protocol choice.</p>
+
+<div class="scenario">
+<h4>Why 2 messages would be insufficient</h4>
+<p>If the handshake stopped after SYN → SYN-ACK, the CLIENT would know
+the connection is working (it received a reply), but the SERVER would
+have NO CONFIRMATION that its own SYN-ACK actually reached the client —
+the server would have to just assume success, with no way to distinguish
+"the client received my SYN-ACK and is happily connected" from "my
+SYN-ACK was lost in transit and the client thinks nothing happened at
+all." Both sides need CONFIRMATION that the OTHER side is aware of and
+ready for the connection — a 2-message exchange can only give ONE side
+that confirmation.</p>
+</div>
+
+<div class="why">
+<strong>Why not 4 messages (separate ACK and SYN from the server)
+instead of combining them into one SYN-ACK?</strong> Because the
+server's ACK (acknowledging the client's SYN) and the server's OWN SYN
+(proposing its own initial sequence number, needed since TCP is
+FULL-DUPLEX — both directions need their own independent sequence
+number space, Section 3) can be safely COMBINED into a single segment
+with both flags set, since they're both things the server wants to say
+to the client at the exact same point in the exchange, with no reason to
+delay one relative to the other. Combining them into one segment (the
+real, actual SYN-ACK) is simply more efficient — 3 total messages
+instead of 4 — with no loss of the confirmation guarantee either side
+needs.
+</div>
+
+<h2 id="sec2">2. TCP's Complete State Diagram, Transition By Transition</h2>
+
+<p>Every state this module's own <code>tcp_state_machine.py</code>
+defines corresponds EXACTLY to RFC 793's real state machine — walk
+through every single transition in <code>simulate_full_lifecycle()</code>,
+matching the real, tested output.</p>
+
+<table>
+<tr><th>Transition</th><th>Trigger</th><th>Meaning</th></tr>
+<tr><td>CLOSED → LISTEN</td><td>Server calls <code>listen()</code></td><td>"Passive open" — the server is now waiting for incoming connection attempts, but hasn't initiated anything itself</td></tr>
+<tr><td>CLOSED → SYN_SENT</td><td>Client calls <code>connect()</code></td><td>"Active open" — the client has sent its own SYN and is waiting for a reply</td></tr>
+<tr><td>LISTEN → SYN_RCVD</td><td>Server receives a SYN</td><td>The server has seen the client's opening bid and responds with its own SYN-ACK</td></tr>
+<tr><td>SYN_SENT → ESTABLISHED</td><td>Client receives SYN-ACK, sends final ACK</td><td>The client now has confirmation BOTH directions work — the client's own SYN was acknowledged, AND the server sent its own SYN, meaning the client has everything it needs to consider the connection fully open</td></tr>
+<tr><td>SYN_RCVD → ESTABLISHED</td><td>Server receives the final ACK</td><td>Only NOW does the server have confirmation the client actually received its SYN-ACK — the connection is genuinely established on BOTH sides only after this third message</td></tr>
+<tr><td>ESTABLISHED → FIN_WAIT_1</td><td>Active closer calls <code>close()</code></td><td>"I'm done sending, here's my FIN" — the side that closes FIRST enters this state</td></tr>
+<tr><td>ESTABLISHED → CLOSE_WAIT</td><td>Passive closer receives a FIN</td><td>"The other side is done, but I might not be yet" — Section 5 covers why this state specifically matters as a diagnostic signal</td></tr>
+<tr><td>FIN_WAIT_1 → FIN_WAIT_2</td><td>Active closer receives an ACK for its own FIN</td><td>Confirmation the other side has acknowledged "I'm closing" — but the OTHER side hasn't sent ITS OWN FIN yet, so the connection isn't fully torn down</td></tr>
+<tr><td>CLOSE_WAIT → LAST_ACK</td><td>Passive closer's OWN application finally calls <code>close()</code></td><td>Now sending its own FIN, waiting for the final acknowledgment</td></tr>
+<tr><td>FIN_WAIT_2 → TIME_WAIT</td><td>Active closer receives the other side's FIN</td><td>Both FINs have now been exchanged — Section 4 covers why a timed wait state exists here rather than closing immediately</td></tr>
+<tr><td>LAST_ACK → CLOSED</td><td>Passive closer receives the final ACK</td><td>Fully done — no more state to track</td></tr>
+<tr><td>TIME_WAIT → CLOSED</td><td>2×MSL timer expires</td><td>Section 4's full explanation</td></tr>
+</table>
+
+<h2 id="sec3">3. Sequence and Acknowledgment Numbers — What They Actually Guarantee</h2>
+
+<p>This module's own tutorial.html Exercise 2 asks you to confirm, via
+Wireshark, that each segment's sequence number increases by exactly the
+payload byte count of the PREVIOUS segment — this is the actual
+mechanism underneath "TCP delivers data in order," and deserves full
+explanation.</p>
+
+<div class="scenario">
+<h4>Worked scenario: sequence numbers as a byte-stream position counter, not a message counter</h4>
+<pre>Client's initial sequence number (chosen semi-randomly at SYN time,
+for security reasons -- a predictable ISN would make certain spoofing
+attacks easier): say, 1000.
+
+Client sends "HELLO" (5 bytes) starting at seq=1000.
+  This segment's sequence number: 1000
+  This means: "the FIRST byte of this segment is byte #1000 in my
+  overall outgoing byte stream" -- NOT "this is message number 1000."
+
+Server ACKs with ack=1005 (1000 + 5 bytes sent).
+  This means: "I have successfully received everything UP TO AND
+  INCLUDING byte #1004 -- I am now expecting byte #1005 next."
+
+Client sends "WORLD" (5 bytes) starting at seq=1005.
+  Sequence number increased by EXACTLY 5 -- the payload length of the
+  PREVIOUS segment -- confirming TCP treats the entire connection as
+  ONE CONTINUOUS BYTE STREAM with sequential position numbers, not a
+  series of independent, separately-numbered messages.</pre>
+</div>
+
+<div class="why">
+<strong>Why does this byte-stream-position design (rather than a simple
+incrementing MESSAGE counter) matter for TCP's reliability guarantee
+specifically?</strong> Because it lets a receiver detect BOTH loss and
+duplication precisely, even when segments arrive out of order or get
+resent: if a receiver has acknowledged up through byte 1004 and then
+receives a segment starting at byte 1010, it can immediately tell 5
+bytes (1005-1009) are MISSING — a gap in the byte-position numbering,
+not just "a message didn't arrive." This precision is exactly what lets
+TCP request RETRANSMISSION of only the specific missing bytes, and
+correctly discard/ignore a DUPLICATE segment it already has (if the
+receiver already has bytes up through 1004, receiving ANOTHER copy of
+bytes 1000-1004 is immediately recognizable as a duplicate to discard,
+not new data).
+</div>
+
+<h2 id="sec4">4. TIME_WAIT — Why 2×MSL, And Why It Matters Practically</h2>
+
+<p>MSL (Maximum Segment Lifetime) is the maximum time any TCP segment is
+assumed to be able to remain "in flight" on the network before being
+either delivered or definitively lost/discarded — commonly assumed to be
+around 30 seconds in real implementations, making 2×MSL roughly 60
+seconds, matching this module's own tutorial.html note.</p>
+
+<div class="why">
+<strong>Why does the side that sends the FINAL ACK (ending the close
+sequence) need to wait a full 2×MSL before fully closing, rather than
+closing immediately?</strong> Two independent reasons, both real:
+FIRST, if that final ACK itself gets LOST in transit, the OTHER side
+(still in LAST_ACK, per Section 2's table) will TIME OUT and
+RETRANSMIT its own FIN — the side in TIME_WAIT needs to still be
+"listening" long enough to receive that retransmitted FIN and send
+another ACK, or the other side would be stuck retransmitting a FIN
+forever with no way to complete its own close. SECOND, waiting ensures
+any duplicate or delayed segments STILL in flight from this now-closed
+connection have time to fully expire and disappear from the network,
+before this same source-port/destination-port combination could
+potentially be REUSED by a brand-new, unrelated connection — preventing
+old, stray segments from a previous connection being misinterpreted as
+belonging to a new one.
+</div>
+
+<div class="scenario">
+<h4>Practical consequence: why a server restart can sometimes fail with "Address already in use"</h4>
+<p>If a server process crashes or restarts while connections are in
+TIME_WAIT on its listening port, attempting to immediately re-bind to
+that SAME port can fail — the OS considers the port still "in use" by
+the lingering TIME_WAIT connections. This is precisely why many real
+server implementations set the <code>SO_REUSEADDR</code> socket option
+specifically to allow re-binding despite TIME_WAIT connections still
+technically occupying that address/port combination — a genuinely
+common, practical gotcha directly explained by understanding WHY
+TIME_WAIT exists in the first place, rather than just knowing the fix by
+rote.</p>
+</div>
+
+<h2 id="sec5">5. CLOSE_WAIT As A Real Diagnostic Signal</h2>
+
+<p>This module's own state machine's comment is worth taking completely
+literally: CLOSE_WAIT means "received FIN, sent ACK (but server's own
+app hasn't closed yet)." This state can, in a REAL, buggy application,
+persist for an abnormally long time — and recognizing this as a
+diagnostic signal is a genuinely practical, real-world skill.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "A production server shows
+hundreds of connections stuck in CLOSE_WAIT, accumulating over time and
+never clearing. What does this indicate, and where is the bug most
+likely located?" CLOSE_WAIT means the REMOTE side has already closed
+its end of the connection (sent a FIN, which this server correctly
+acknowledged) — but THIS server's own APPLICATION CODE has not yet
+called <code>close()</code> on its own socket in response. A large,
+GROWING number of connections stuck in this state indicates a genuine
+APPLICATION-LEVEL bug — most likely, the server's own code has a path
+where it fails to close a socket after the remote end disconnects (a
+resource leak), NOT a TCP protocol-level or network problem. This is a
+real, common production debugging scenario, and correctly attributing it
+to application code (not network infrastructure) is exactly the kind of
+precise diagnostic reasoning this module's state machine knowledge is
+meant to enable.
+</div>
+
+<h2 id="sec6">6. The Simultaneous-Close / CLOSING State, Fully Explained</h2>
+
+<p><code>simulate_simultaneous_close()</code> demonstrates a genuinely
+rare, timing-dependent edge case RFC 793 explicitly accounts for: both
+sides calling <code>close()</code> at nearly the same instant.</p>
+
+<div class="scenario">
+<h4>Why CLOSING exists as its own distinct state, rather than reusing FIN_WAIT_1 or CLOSE_WAIT</h4>
+<p>In the NORMAL close sequence (Section 2), one side is always the
+"active closer" (sends FIN first) and the other is the "passive closer"
+(receives a FIN, hasn't sent its own yet) — these are genuinely
+different roles with different next steps. In the SIMULTANEOUS case,
+BOTH sides have ALREADY sent their own FIN (both are in FIN_WAIT_1) when
+they EACH receive the other's FIN — neither side fits the "passive
+closer, haven't sent my own FIN yet" description CLOSE_WAIT represents.
+CLOSING is the state specifically for "I've sent my FIN, AND I've now
+also received the other side's FIN, but I haven't yet gotten
+confirmation (an ACK) that THEY received MY FIN" — a genuinely distinct
+combination of facts that neither FIN_WAIT_1 nor CLOSE_WAIT correctly
+describes, which is exactly why RFC 793 defines it as its own state
+rather than awkwardly overloading an existing one.</p>
+</div>
+
+<h2 id="sec7">7. UDP — Precisely What "No Guarantees" Means, With Scenarios</h2>
+
+<div class="scenario">
+<h4>Scenario: tracing exactly what happens to a lost UDP datagram, contrasted with TCP</h4>
+<p>In <code>udp_echo_server.py</code>'s deliberate ~30% drop simulation:
+a datagram sent by the client that gets "dropped" by the server simply
+CEASES TO EXIST as far as the protocol is concerned — there is no
+retransmission timer, no sequence number gap to detect, no
+acknowledgment the client is even waiting for at the UDP layer itself.
+The client's <code>udp_echo_client.py</code> — having ZERO built-in
+retry logic, as this module's own tutorial.html explicitly notes — simply
+never receives a reply for that specific datagram and moves on. Contrast
+this directly with TCP (Section 3): a lost TCP segment triggers a
+retransmission timeout, a resend, and the connection's overall data
+delivery is NEVER silently incomplete — UDP has none of this machinery
+at all, by design, not by oversight.</p>
+</div>
+
+<div class="why">
+<strong>Why would ANY real application choose UDP's lack of guarantees
+deliberately, rather than always using TCP's reliability?</strong> TCP's
+reliability machinery (retransmission, ordering, connection setup/teardown)
+adds real LATENCY and OVERHEAD — for applications where a single lost
+piece of data is more acceptable than the DELAY of waiting for a
+retransmission (real-time voice/video calls, where an old, retransmitted
+audio sample arriving late is actually WORSE than simply skipping it and
+moving on to current audio), or where the application itself will handle
+its own retry logic more efficiently than TCP's general-purpose approach
+(DNS, Module 08's own territory, typically just re-sends an entire query
+after a short timeout rather than needing byte-level retransmission),
+UDP's simplicity and lower overhead is a genuine, deliberate engineering
+tradeoff — not a lesser, incomplete version of TCP.
+</div>
+
+<h2 id="sec8">8. Full Code Walkthrough — tcp_state_machine.py</h2>
+
+<h3>8.1 — Why Client and Server are modeled as independent objects</h3>
+<pre>client = TcpEndpoint("Client")
+server = TcpEndpoint("Server")</pre>
+<p>This directly reflects a real, important truth about TCP: there is
+NO shared, global "connection state" object anywhere on the network —
+EACH side maintains its OWN state machine, independently, and learns
+about the OTHER side's state ONLY through the segments that actually
+cross the wire (a SYN, an ACK, a FIN). This module's own comment states
+this explicitly: "two independent state machines... each transitions
+independently, exactly like two real TCP stacks." This is precisely WHY
+the simultaneous-close scenario (Section 6) can happen at all — since
+neither side has direct visibility into the other's exact state, timing
+coincidences where both sides act "simultaneously" (from each side's own
+local perspective) are genuinely possible.</p>
+
+<h3>8.2 — Why the CLOSE_WAIT-to-LAST_ACK gap is shown with explicit narration</h3>
+<pre>print("\n  ... server's application finishes what it was doing, THEN closes ...")
+server.transition(LAST_ACK, "application (finally) called close(), sent its own FIN")</pre>
+<p>The word "finally" and the explicit narrated pause here are
+deliberate teaching choices, not incidental — this GAP in time (between
+entering CLOSE_WAIT and eventually transitioning to LAST_ACK) is
+EXACTLY the gap Section 5's diagnostic scenario depends on understanding:
+a real server can sit in CLOSE_WAIT for an ARBITRARILY long time if its
+own application code is slow, busy, or buggy about calling
+<code>close()</code> — the state machine doesn't enforce any particular
+timing here at all; it's entirely up to the application.</p>
+
+<h2 id="sec9">9. Reading Real netstat/ss Output, Field By Field</h2>
+
+<div class="scenario">
+<h4>Worked scenario: interpreting a real ss -tan line</h4>
+<pre>State       Recv-Q Send-Q Local Address:Port   Peer Address:Port
+ESTAB       0      0      127.0.0.1:9007        127.0.0.1:52341
+
+State: ESTAB (ESTABLISHED) -- matches this module's state machine's
+  ESTABLISHED state exactly, confirmed on your REAL OS, not simulated.
+Recv-Q / Send-Q: bytes currently queued but not yet read by the
+  application (Recv-Q) or not yet acknowledged by the peer (Send-Q) --
+  both 0 here means the connection is fully "caught up," nothing
+  pending in either direction at this instant.
+Local/Peer Address:Port: exactly what you'd expect -- notice the
+  PEER's port (52341) is a high, seemingly random EPHEMERAL port,
+  automatically assigned by the CLIENT's OS for this one connection --
+  contrast with the server's port (9007), which is the well-known,
+  fixed port the server explicitly bound to and is listening on.</pre>
+</div>
+
+<h2 id="sec10">10. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming TIME_WAIT indicates something is
+WRONG.</strong> Seeing a connection in TIME_WAIT briefly after closing is
+the CORRECT, EXPECTED behavior (Section 4) — it is not an error state,
+a stuck connection, or a sign of a problem. Only a connection that stays
+in TIME_WAIT for MUCH longer than roughly 2×MSL (a minute or two, not
+hours), or an unboundedly GROWING number of TIME_WAIT connections
+specifically, would indicate something worth investigating (e.g., an
+application creating and tearing down an unusually large number of
+short-lived connections very rapidly).
+</div>
+
+<div class="scenario">
+<h4>Confusion: "if UDP has zero reliability guarantees, how does DNS (which runs over UDP) work reliably at all?"</h4>
+<p>DNS achieves reliability at the APPLICATION layer instead of relying
+on the transport layer — a DNS client that doesn't receive a reply
+within a short timeout simply RE-SENDS the entire query itself (Module
+08's own territory covers this precisely), rather than depending on
+UDP to notice and fix the loss. This is exactly the "build your own
+retry logic on top of UDP" exercise this module's own Exercise 1 asks
+you to implement directly — you're not inventing a new technique;
+you're replicating, in miniature, exactly what real, ubiquitous
+protocols like DNS actually do.</p>
+</div>
+
+<h2 id="sec11">11. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 08, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Draw TCP's complete state diagram, including both the normal close
+sequence AND the simultaneous-close CLOSING state.</li>
+<li>Explain precisely why the handshake needs exactly 3 messages, not 2
+or 4.</li>
+<li>Explain what sequence and acknowledgment numbers actually represent
+(byte-stream position, not message count) and why this design enables
+precise loss/duplicate detection.</li>
+<li>Explain TIME_WAIT's 2×MSL duration and its TWO distinct
+justifications (retransmitted FIN handling, and preventing stray old
+segments from confusing a new connection).</li>
+<li>Diagnose a hypothetical "many connections stuck in CLOSE_WAIT"
+scenario as an application-level bug, with the correct reasoning for why.</li>
+<li>Explain precisely what UDP does NOT guarantee, and articulate a
+real, legitimate reason an application would choose UDP over TCP
+anyway.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 08 builds real DNS, DHCP, and HTTP servers directly
+on top of the transport-layer guarantees (or deliberate lack thereof)
+you should now understand mechanically, not just by name.</p>
+
+</body>
+</html>

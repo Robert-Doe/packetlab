@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 07 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 07 — Tutorial</h1>
+<p>Goal: see TCP's reliability and UDP's lack of it side by side, on
+purpose-built demos, then confirm TCP's actual connection states on your
+own machine with the tools every network engineer reaches for first.</p>
+
+<h2>Step 1 — the state machine, on paper first</h2>
+<pre>cd module-07-transport-layer
+python tcp_state_machine.py</pre>
+<div class="expect"><strong>Expected:</strong> a full connect-transfer-close
+sequence for Client/Server, then a bonus "simultaneous close" scenario
+showing the CLOSING state — a transition that exists ONLY to handle both
+sides closing at nearly the same instant. Read every line; this is the
+reference you'll compare real output against in Step 3.</div>
+
+<h2>Step 2 — TCP: reliable, in order, exactly once</h2>
+<pre># terminal 1
+python tcp_echo_server.py
+# terminal 2
+python tcp_echo_client.py</pre>
+<div class="expect"><strong>Expected:</strong> all 5 messages echo back
+identical to what was sent, in order. Nothing in <code>tcp_echo_client.py</code>
+handles retries, reordering, or loss — because TCP's own state machine
+(the one you just read in Step 1) does that work underneath the socket API,
+invisibly.</div>
+
+<h2>Step 3 — catch the real states with netstat/ss</h2>
+<p>While the client from Step 2 is still connected (add a
+<code>time.sleep(5)</code> in the client if you need more time), run in a
+third terminal:</p>
+<pre># Windows
+netstat -an | findstr 9007
+# macOS/Linux
+ss -tan | grep 9007</pre>
+<div class="expect"><strong>Expected:</strong> a line showing
+<code>ESTABLISHED</code> — the real OS-level TCP state, not a simulation,
+for the exact connection <code>tcp_state_machine.py</code> predicted.
+Run the same command again immediately after the client finishes and
+disconnects — you should catch <code>TIME_WAIT</code> for a few seconds
+before it disappears entirely. This was confirmed working during this
+module's own build.</div>
+
+<h2>Step 4 — UDP: no guarantees, made visible</h2>
+<pre># terminal 1
+python udp_echo_server.py
+# terminal 2
+python udp_echo_client.py</pre>
+<div class="expect"><strong>Expected:</strong> roughly 30% of the 15
+datagrams show "NO REPLY" — the server deliberately drops them to make
+loss visible instead of theoretical. Note the client has NO retry logic
+at all; a lost datagram is simply gone, forever, as far as this code is
+concerned. That's the entire meaning of "unreliable, connectionless" made
+concrete instead of quoted from a textbook.</div>
+
+<h2>Step 5 — run both the Node variants and compare</h2>
+<pre>node tcp_echo_server.js     # separate port (9017) from the Python variant
+node tcp_echo_client.js
+node udp_echo_server.js     # separate port (9019)
+node udp_echo_client.js</pre>
+<div class="expect">Same reliability/unreliability story, same
+percentages (allowing for the different, but equally seeded, random drop
+pattern) — two completely different socket APIs (<code>socket</code> vs.
+Node's <code>net</code>/<code>dgram</code>), same protocol-level
+guarantees underneath.</div>
+
+<h2>Exercises before Module 08</h2>
+<ol>
+  <li><strong>Build retry logic on top of UDP.</strong> Modify
+      <code>udp_echo_client.py</code> to resend a datagram up to 3 times if
+      no reply arrives within the timeout, before giving up. Congratulations
+      — you've just built a tiny piece of what DNS does over UDP (Module 08)
+      and what TCP does automatically underneath every socket you've ever
+      opened.</li>
+  <li><strong>Watch a real TCP connection's sequence numbers.</strong>
+      Re-run Module 02's Wireshark capture setup against
+      <code>tcp_echo_server.py</code>/<code>client.py</code> instead of the
+      HTTP demo. Find the SYN packet's initial sequence number, and confirm
+      each subsequent segment's sequence number increases by exactly the
+      number of payload bytes in the previous segment — this is the
+      mechanism underneath "TCP delivers data in order," made visible.</li>
+  <li><strong>Reproduce the simultaneous-close scenario for real.</strong>
+      Modify both <code>tcp_echo_server.py</code> and a new client so both
+      call close() at nearly the same moment (using threading and a shared
+      start signal). Capture it in Wireshark and look for a CLOSING-adjacent
+      pattern (both sides sending FIN before receiving the other's ACK) —
+      harder to trigger reliably than the textbook case, which is itself an
+      instructive lesson about timing-dependent protocol edge cases.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 08:</strong> you should be able to explain, without
+notes, what specifically TCP guarantees that UDP doesn't, and be able to
+point to the exact state transition where the guarantee "TCP delivers
+data reliably" actually happens (hint: it's not one transition — it's the
+retransmission/ACK behavior that happens continuously WHILE both sides sit
+in ESTABLISHED, which this module's state machine simplifies into "data
+transfer" but real TCP implements as a whole additional protocol layer of
+its own). Module 08 builds real DNS, DHCP, and HTTP servers — the
+application-layer protocols that ride on top of the transport guarantees
+(or lack thereof) you just watched directly.
+</div>
+
+</body>
+</html>

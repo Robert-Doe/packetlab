@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 07 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 07 — Deep Theory: TCP Reliability, Command by Command, Plus Congestion Control</h1>
+
+<h2>1. Command-by-Command: Catching Real TCP States</h2>
+
+<h3><code>netstat -an | findstr 9007</code> (Windows)</h3>
+<p><strong>What each piece does:</strong> <code>netstat</code> reports
+active network connections and listening ports. <code>-a</code> means
+"show ALL connections and listening ports" (without it, some categories
+are hidden by default). <code>-n</code> means "numeric" — show raw IP
+addresses and port numbers rather than trying to resolve them to
+hostnames/service names, which is both faster and more precise for this
+kind of debugging. The output is piped (<code>|</code>) into
+<code>findstr 9007</code>, Windows' text-search utility, filtering the
+(potentially very long) full connection list down to just lines
+containing "9007" — the port <code>tcp_echo_server.py</code> listens on.</p>
+
+<h3><code>ss -tan | grep 9007</code> (Linux)</h3>
+<p><strong>What each piece does:</strong> <code>ss</code> ("socket
+statistics") is the modern Linux replacement for the older
+<code>netstat</code> (which is deprecated on current Linux distributions
+but still common on Windows/Mac). <code>-t</code> restricts output to TCP
+sockets specifically (excluding UDP, Unix domain sockets, etc.);
+<code>-a</code> shows all sockets, not just established ones;
+<code>-n</code> again means numeric output. <code>grep 9007</code> is the
+Linux/Mac equivalent of <code>findstr</code> — a general-purpose text
+search tool, filtering the output to matching lines.</p>
+
+<div class="why">
+<strong>Why does this command let you see a REAL kernel-level TCP state,
+when your own Python code never asked the kernel for it?</strong> Because
+TCP state (CLOSED, ESTABLISHED, TIME_WAIT, etc.) isn't something your
+application-level socket code tracks at all — it's tracked entirely
+inside the OS kernel's own TCP/IP stack implementation, for every socket
+on the system, regardless of which program owns it. <code>netstat</code>/<code>ss</code>
+are simply reading and reporting that kernel-internal state directly —
+this is precisely why this state is visible externally even though
+<code>tcp_echo_client.py</code> never explicitly asked for or printed it.
+</div>
+
+<h2>2. TCP's Reliability Mechanism, Fully Formal</h2>
+<p><code>tcp_state_machine.py</code> deliberately simplified the
+ESTABLISHED state into "data transfer happens here" — the real mechanism
+underneath that simplification is worth understanding precisely for a
+comprehensive exam:</p>
+<ul>
+<li><strong>Sequence numbers:</strong> every byte TCP sends is assigned a
+sequence number (starting from a random Initial Sequence Number chosen at
+connection setup, for security — a predictable ISN historically enabled
+TCP session-hijacking attacks). The receiver uses sequence numbers to
+reassemble data in the CORRECT ORDER even if segments arrive
+out-of-order over the network.</li>
+<li><strong>Acknowledgment numbers:</strong> the receiver continuously
+tells the sender "I've successfully received everything up through byte
+N" via the ACK field. If the sender doesn't receive an ACK for
+previously-sent data within a calculated timeout, it RETRANSMITS —
+this is the actual mechanism providing "reliable delivery," not a single
+state transition but continuous, ongoing behavior throughout ESTABLISHED.</li>
+<li><strong>The sliding window:</strong> rather than waiting for an ACK
+after every single segment (which would be extremely slow), TCP allows
+multiple unacknowledged segments "in flight" simultaneously, up to a
+window size the receiver advertises (based on its own available buffer
+space) — this window can grow or shrink dynamically as conditions change.</li>
+</ul>
+
+<h2>3. Congestion Control: The Piece This Course's Code Never Simulates</h2>
+<p>Beyond RELIABILITY (does the data arrive, correctly ordered), TCP
+separately solves CONGESTION AVOIDANCE — preventing a sender from
+overwhelming the NETWORK PATH itself (routers' buffers, shared link
+capacity), as distinct from overwhelming the RECEIVER's buffer (which
+the sliding window / receive-window mechanism already handles).</p>
+<table>
+<tr><th>Phase</th><th>Behavior</th><th>Purpose</th></tr>
+<tr><td>Slow start</td><td>Congestion window starts small, DOUBLES every round-trip (exponential growth) until a loss is detected or a threshold is reached</td><td>Rapidly discover available bandwidth without guessing a fixed rate upfront</td></tr>
+<tr><td>Congestion avoidance</td><td>After slow start's threshold, growth switches to linear (roughly +1 segment per round-trip)</td><td>Probe for MORE available bandwidth cautiously, rather than continuing exponential growth that would likely overshoot and cause loss</td></tr>
+<tr><td>Loss response (classic Reno-style)</td><td>On detecting loss, congestion window is cut sharply (historically halved), then congestion avoidance resumes from there</td><td>Back off quickly when the network signals it's overloaded (a lost packet is interpreted as an implicit congestion signal), retry growth more conservatively</td></tr>
+</table>
+<div class="brain">
+<strong>Brain power:</strong> why does TCP treat PACKET LOSS specifically
+as its primary signal for "the network is congested," when loss can also
+be caused by unrelated things (a flaky Wi-Fi link, a genuine hardware
+error)? Historically, on wired networks, packet loss was OVERWHELMINGLY
+caused by router buffers overflowing under congestion, not by
+transmission errors — making loss a reasonably reliable congestion
+signal for the era TCP's classic congestion control algorithms (Reno,
+Tahoe) were designed in. This assumption becomes LESS reliable on modern
+wireless links (Wi-Fi, cellular), where loss from interference/signal
+quality is common and unrelated to actual congestion — which is part of
+why newer congestion control algorithms (e.g., BBR, used increasingly at
+Google/YouTube-scale) instead estimate congestion from measured
+bandwidth and round-trip-time changes, not loss alone.
+</div>
+
+<h2>4. Why the Initial Sequence Number Is Randomized</h2>
+<p>If a TCP connection's sequence numbers started predictably (e.g.,
+always at 0), an attacker who could GUESS or predict a victim's sequence
+numbers could potentially inject forged data into an existing connection,
+or hijack a session, without needing to actually intercept the real
+traffic — they'd just need to send a spoofed packet with the source
+address forged and a correctly-guessed sequence number. Randomizing the
+Initial Sequence Number (a real historical security fix, following
+documented real-world TCP sequence-prediction attacks in the 1990s) makes
+this dramatically harder, since an attacker off-path (not actually
+intercepting real traffic) can no longer reliably predict what sequence
+number a legitimate segment would need.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>netstat/ss reading kernel TCP state</td><td>Module 14's network monitoring, general operational debugging literacy</td></tr>
+<tr><td>Sequence/ACK numbers, sliding window</td><td>Module 18's forensic pcap reconstruction (reading real TCP streams)</td></tr>
+<tr><td>Congestion control (slow start, AIMD)</td><td>General performance-troubleshooting literacy, relevant to any "why is this connection slow" investigation</td></tr>
+<tr><td>ISN randomization as a security control</td><td>Module 16's vulnerability assessment mindset — a real historical CVE-class attack</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
