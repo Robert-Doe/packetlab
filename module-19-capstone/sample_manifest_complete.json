@@ -1,0 +1,32 @@
+{
+  "network": {
+    "vlans": [
+      {
+        "name": "Main", "cidr": "192.168.0.32/27",
+        "isolation_rules": [{"from": "Lab", "to": "Main", "action": "BLOCK"}]
+      },
+      {
+        "name": "Lab", "cidr": "192.168.0.64/28",
+        "isolation_rules": [{"from": "Lab", "to": "Main", "action": "BLOCK"}]
+      }
+    ],
+    "firewall_rules": [
+      {"from": "Main", "to": "Lab", "action": "ALLOW"},
+      {"from": "Lab", "to": "Main", "action": "BLOCK"}
+    ]
+  },
+  "monitoring": {
+    "siem_active": true,
+    "detectors": ["port_scan", "beaconing", "ids_signature"]
+  },
+  "vulnerability_assessment": {
+    "findings": [
+      {"id": "F-001", "description": "vsftpd 2.3.4 backdoor (CVE-2011-2523) on lab VM", "remediated": true},
+      {"id": "F-002", "description": "SSH open to 0.0.0.0/0 on lab firewall", "remediated": true}
+    ]
+  },
+  "incident_report": {
+    "path": "my_incident_report.md",
+    "word_count": 420
+  }
+}

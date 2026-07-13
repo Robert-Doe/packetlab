@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 19 — Exam Practice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.6; color: #1a1a1a; }
+  h1 { border-bottom: 4px solid #222; padding-bottom: 10px; }
+  details { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  summary { font-weight: 600; cursor: pointer; }
+  .answer { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; font-family: "SFMono-Regular", Consolas, monospace; }
+  nav a { margin-right: 16px; }
+  .instructions { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">← Deep Theory</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 19 — Exam Practice</h1>
+<div class="instructions">Cover the answer before reading it. Click Show answer only after you've committed to what you'd actually say.</div>
+
+<details>
+<summary>Q1. capstone_checker.py reports 100% completeness. Does this mean your capstone is done, in a full quality sense? Why or why not?</summary>
+<div class="answer">
+<strong>A:</strong> No -- the brief explicitly states 100% is "a floor,
+not a ceiling." The checker verifies INTERNAL CONSISTENCY: that claimed
+firewall rules match claimed isolation, that findings are remediated,
+that the report meets a minimum length. It cannot verify whether your
+network design is actually SOUND, whether your remediation was the right
+one, or whether your report is genuinely well-reasoned -- those require
+human (or self-) judgment the checker isn't built to make.
+</div>
+</details>
+
+<details>
+<summary>Q2. Why does the capstone brief insist on reconstructing the simulated incident forensically "even if you watched it happen live"?</summary>
+<div class="answer">
+<strong>A:</strong> A real incident responder analyzing an actual breach
+is virtually never present when it happened -- they have only whatever
+evidence their tooling captured. If your reconstruction secretly relies
+on memory of watching the attack happen rather than what your logs/SIEM/
+capture actually show, that's a real, hidden gap in your monitoring setup
+that this exercise is specifically designed to surface -- it forces your
+evidence-gathering to stand on its own, the actual standard real forensic
+work must meet.
+</div>
+</details>
+
+<details>
+<summary>Q3. The brief requires "at least 2 isolated segments with a real, working firewall rule enforcing the isolation (verified with an actual ping test, not just asserted)." Why does this specific phrasing matter?</summary>
+<div class="answer">
+<strong>A:</strong> "Asserted" isolation means simply declaring or
+configuring a rule and assuming it works; "verified with an actual ping
+test" means empirically confirming the rule has the intended effect by
+attempting the traffic it should block and observing the failure. This
+distinction matters because firewall rules are a common source of
+silent misconfiguration (wrong interface, wrong direction, rule ordering
+issues) -- the same "test what you built, don't just trust the
+configuration" discipline this entire course has modeled from Module 01
+onward (e.g., Module 05's routing bug that was only caught by actually
+running the simulation, not by reading the code).
+</div>
+</details>
+
+<details>
+<summary>Q4. Requirement 3 asks for a real vulnerability finding AND a remediation you "actually applied (not just documented as 'should fix')." Why does the checker specifically flag unremediated findings as a gap?</summary>
+<div class="answer">
+<strong>A:</strong> A vulnerability assessment that only produces a list
+of problems, without follow-through, has real value only as a starting
+point -- the actual security benefit comes from FIXING the problem, not
+from knowing about it. A capstone that stopped at "found a finding" would
+demonstrate scanning skill but not the complete assess-and-remediate
+cycle that real security work requires; flagging an unremediated finding
+as an explicit gap enforces that the capstone demonstrates the whole
+cycle, not just its first half.
+</div>
+</details>
+
+<details>
+<summary>Q5. Why does this module claim "there's no new mechanism to learn here" -- is that actually true, given the amount of work the capstone requires?</summary>
+<div class="answer">
+<strong>A:</strong> Yes, in the specific sense that every individual
+TECHNIQUE required (VLSM planning, firewall rules, detector logic, SIEM
+pipelines, vulnerability scanning, forensic reconstruction, incident
+reporting) was already taught and tested in Modules 04 through 18. What's
+new is the INTEGRATION work -- making all of these pieces function
+together as one coherent, internally consistent system, which is a
+genuinely different skill from executing any one piece in isolation, and
+is exactly the skill a real security role (and a comprehensive exam)
+actually demands.
+</div>
+</details>
+
+<details>
+<summary>Q6. Why does the tutorial insist on explaining your build "out loud... without notes" as the final step, rather than considering the working system itself sufficient proof of mastery?</summary>
+<div class="answer">
+<strong>A:</strong> Being able to build something (possibly by following
+patterns, copying structure, or trial-and-error) is a different skill
+from being able to articulate WHY each decision was made, fluently and
+under scrutiny, in the field's own vocabulary. A comprehensive exam
+specifically tests the latter -- the ability to reason and explain live,
+not just to have produced a working artifact. This final step is the
+actual rehearsal for that exact situation.
+</div>
+</details>
+
+<details>
+<summary>Q7. Synthesis: name three DIFFERENT modules whose core mechanism you would need to correctly explain, unscripted, to defend a capstone network with 2 segments, a detected port scan, and a remediated CVE finding.</summary>
+<div class="answer">
+<strong>A:</strong> Any coherent answer should include at minimum:
+Module 04/09 (VLSM subnetting to actually plan the 2 segments), Module 10
+(the firewall rule mechanism -- stateful filtering/conntrack -- enforcing
+the isolation between them), Module 14 (the statistical reasoning behind
+the port-scan detector, e.g., tight timing window across many distinct
+ports from one source), and Module 16 (CVSS-based severity reasoning and
+the CVE/remediation cycle for the vulnerability finding). A strong answer
+explains not just WHAT each module's tool does, but WHY its underlying
+mechanism produces the specific evidence or protection claimed --
+exactly the standard this course has built toward from Module 01 onward.
+</div>
+</details>
+
+</body>
+</html>

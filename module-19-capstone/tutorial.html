@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 19 Tutorial — Capstone</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 19 — The Capstone</h1>
+<p>There's no new mechanism to learn here. Every tool, every concept, every
+technique you need for this module already exists in Modules 01-18. This
+module is about combining them into one coherent project — design,
+build, monitor, attack, defend, document.</p>
+
+<h2>Step 1 — read the brief and rubric completely</h2>
+<p>Read <code>capstone_brief.md</code> and <code>capstone_rubric.html</code>
+before building anything. Know what "done" looks like before you start.</p>
+
+<h2>Step 2 — verify the checker works, on the provided samples, before trusting it on your own project</h2>
+<pre>cd module-19-capstone
+python capstone_checker.py sample_manifest_complete.json</pre>
+<div class="expect"><strong>Expected:</strong> 100% completeness, no gaps.</div>
+<pre>python capstone_checker.py sample_manifest_incomplete.json</pre>
+<div class="expect"><strong>Expected:</strong> 0% completeness, 5 specific
+gaps — a missing firewall rule for a declared VLAN isolation rule, SIEM
+inactive, only 1 detector type, an unremediated vulnerability finding, and
+a too-short incident report. Confirmed identical between Python and Node
+during this module's build.</div>
+
+<h2>Step 3 — build your actual capstone</h2>
+<p>Follow <code>capstone_brief.md</code>'s 5 requirements, using
+<code>red_team_blue_team_playbook.md</code> for the attack/defend cycle.
+This is genuinely the longest step, likely spanning days, not the
+one-sitting pace of earlier modules.</p>
+
+<h2>Step 4 — write your own manifest and check it</h2>
+<p>Copy <code>sample_manifest_complete.json</code>'s structure, fill in
+YOUR real project's details, and run:</p>
+<pre>python capstone_checker.py your_manifest.json</pre>
+<div class="expect"><strong>Expected:</strong> work toward 100%, honestly
+— if the checker finds a gap, that's real information about your project,
+not a false alarm to explain away.</div>
+
+<h2>Step 5 — write the report and present it to yourself</h2>
+<p>Use <code>final_report_template.md</code>. Then, out loud, to yourself
+or someone else, explain your entire build without notes — the network
+design, the monitoring, the vulnerability you found and fixed, the
+incident you reconstructed. If you can do this fluently, you've actually
+learned the material this course spent 19 modules building toward.</p>
+
+<div class="note">
+<strong>You've finished the course.</strong> Every module from 01 through
+19 was built and tested for real where testing was possible, and honestly
+scoped to guided exercises where real hardware, cloud accounts, or heavy
+infrastructure made full automation inappropriate. The vocabulary,
+mechanisms, and hands-on instincts you've built — from a subnet mask being
+an AND operation, to a TCP state machine, to a real X.509 certificate
+chain, to reconstructing an incident from a raw capture — are the actual
+foundation a PhD-level security researcher needs before specializing
+further. Good luck with what comes next.
+</div>
+
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Capstone Rubric — Module 19</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 24px; }
+  td, th { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; font-size: 0.92rem; }
+  th { background: #f4f4f4; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<h1>Capstone Self-Assessment Rubric</h1>
+<p>This isn't graded by anyone but you — but a rubric with no teeth is
+just a wish list. Score yourself honestly against each row before
+considering the capstone complete. <code>capstone_checker.py</code>
+automates the objective parts (consistency); this rubric covers the parts
+that require judgment.</p>
+
+<table>
+<tr><th>Area</th><th>Meets expectations</th><th>Modules drawn from</th></tr>
+<tr>
+  <td><strong>Network design</strong></td>
+  <td>Segmentation is deliberate (not arbitrary), sized correctly via real
+      subnetting math, and every isolation decision has a stated reason
+      (not just "because Module 09 said so").</td>
+  <td>04, 05, 09</td>
+</tr>
+<tr>
+  <td><strong>Enforcement</strong></td>
+  <td>Every designed isolation rule is actually enforced and VERIFIED
+      (a real failed ping, not an assumption) — <code>capstone_checker.py</code>
+      confirms the plan/firewall consistency automatically.</td>
+  <td>09, 10, 17</td>
+</tr>
+<tr>
+  <td><strong>Monitoring</strong></td>
+  <td>At least 2 distinct detector types are active and have been tested
+      against traffic that SHOULD trigger them (not just running with no
+      confirmed detections ever).</td>
+  <td>14, 15</td>
+</tr>
+<tr>
+  <td><strong>Vulnerability assessment</strong></td>
+  <td>A real scan was run against your own lab (not just localhost demo
+      data), at least one real finding was identified, and the
+      remediation was verified by re-testing, not just documented.</td>
+  <td>16</td>
+</tr>
+<tr>
+  <td><strong>Red/blue exercise</strong></td>
+  <td>You caused a real incident in your own lab, detected it (or
+      documented specifically why detection failed), and reconstructed it
+      from raw evidence alone — not from memory of what you did.</td>
+  <td>02, 14, 18</td>
+</tr>
+<tr>
+  <td><strong>Incident report</strong></td>
+  <td>A stranger could read it and understand what happened, why you
+      believe each claim, and what changed as a result — without asking
+      you a single follow-up question.</td>
+  <td>18</td>
+</tr>
+<tr>
+  <td><strong>Explaining it live</strong></td>
+  <td>You can explain any part of your build, unscripted, using this
+      course's vocabulary (longest-prefix match, stateful tracking, PMK
+      vs PTK, whatever's relevant) — not reading from notes.</td>
+  <td>All 18 preceding modules</td>
+</tr>
+</table>
+
+<h2>The honest failure mode to watch for</h2>
+<p>It's easy to build something that LOOKS complete (every file exists,
+every checkbox ticked) without it being TRUE (the firewall rule you wrote
+doesn't actually match what you intended, the vulnerability you
+"remediated" wasn't re-tested, the incident report summarizes what you
+remember rather than what the evidence shows). <code>capstone_checker.py</code>
+catches some of this mechanically. The rest is on you — the entire point
+of a capstone is producing something you'd trust, not something that
+merely passes a checklist.</p>
+
+</body>
+</html>
