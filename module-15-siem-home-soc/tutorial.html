@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 15 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 15 — Tutorial</h1>
+<p>Goal: take Module 14's one-shot detection scripts and build a real,
+continuously-running pipeline around them — logs shipped into
+Elasticsearch, visualized in Kibana and Grafana, instead of reading
+terminal output once and moving on.</p>
+
+<div class="note">
+<strong>What was tested, and what wasn't:</strong> <code>log_shipper.py</code>/<code>.js</code>
+were fully tested — they produce genuinely valid Elasticsearch Bulk API
+NDJSON and Logstash-ready JSON lines, confirmed by self-validation during
+this module's build. <code>docker-compose.yml</code>'s syntax was
+validated with <code>docker compose config</code> (confirmed correct,
+no daemon required) but the stack itself was NOT brought up during this
+module's build — bringing up a 4-container ELK+Grafana stack is a genuine
+resource commitment worth making deliberately, on your own schedule, not
+as a side effect of building course material. Bring it up yourself
+following Step 1 below.
+</div>
+
+<h2>Step 1 — bring up the stack</h2>
+<pre>cd module-15-siem-home-soc
+docker compose up -d</pre>
+<div class="expect"><strong>Expected:</strong> 4 containers start
+(elasticsearch, logstash, kibana, grafana). Give Elasticsearch 30-60
+seconds to become healthy before continuing —
+<code>docker compose ps</code> should show it as <code>healthy</code>.</div>
+
+<h2>Step 2 — generate real findings and ship them</h2>
+<pre>cd ../module-14-network-security-monitoring
+python generate_conn_log.py
+mkdir -p ../module-15-siem-home-soc/data
+cp conn.log ../module-15-siem-home-soc/data/
+
+cd ../module-15-siem-home-soc
+python log_shipper.py</pre>
+<div class="expect"><strong>Expected:</strong> <code>alerts.jsonl</code>
+and <code>bulk.ndjson</code> are created. Copy <code>alerts.jsonl</code>
+into <code>./data/</code> too — Logstash's file input is watching that
+directory (per <code>logstash.conf</code>).</div>
+<pre>cp alerts.jsonl data/
+docker compose restart logstash</pre>
+
+<h2>Step 3 — see it in Kibana</h2>
+<p>Open <code>http://127.0.0.1:5601</code>. Go to Stack Management → Data
+Views, create one matching <code>module15-conn-*</code> and another for
+<code>module15-alerts-*</code>. Then Discover → pick the alerts data view.</p>
+<div class="expect"><strong>Expected:</strong> the 3 sample alerts from
+<code>log_shipper.py</code> appear as documents, with their
+<code>type</code>, <code>src</code>, <code>dst</code> fields intact and a
+real <code>@timestamp</code> Logstash's date filter assigned.</div>
+
+<h2>Step 4 — import the Grafana dashboard</h2>
+<p>Open <code>http://127.0.0.1:3000</code> (login: admin /
+changeme_before_real_use — CHANGE THIS if you keep the stack running
+beyond this lab). Add an Elasticsearch data source pointing at
+<code>http://elasticsearch:9200</code> (or <code>host.docker.internal</code>
+depending on your Docker network setup), then Dashboards → Import →
+paste <code>grafana_dashboard.json</code>'s contents.</p>
+<div class="expect"><strong>Expected:</strong> 5 panels render — alerts by
+type (pie chart), alerts over time, port scan sources table, beaconing
+candidates table, and a connection-volume stat panel.</div>
+
+<h2>Step 5 — real Zeek/Suricata data, not just samples</h2>
+<p>If you completed Module 14's optional Step 5 (real Zeek/Suricata in
+your Module 09 lab), point <code>logstash.conf</code>'s file input at your
+REAL <code>conn.log</code> instead of the synthetic one, and watch actual
+lab traffic flow through the same pipeline.</p>
+
+<h2>Exercises before Module 16</h2>
+<ol>
+  <li><strong>Wire Module 14's actual detectors into this pipeline.</strong>
+      Modify <code>log_shipper.py</code> to import and call
+      <code>conn_log_analyzer.detect_port_scans</code>/
+      <code>detect_beaconing</code> directly (rather than using
+      <code>SAMPLE_ALERTS</code>), so real detection findings ship
+      automatically instead of being hand-typed.</li>
+  <li><strong>Add a Kibana alert.</strong> Under Stack Management → Rules,
+      create a rule that fires when a new document appears in
+      <code>module15-alerts-*</code> — this is the beginning of genuine
+      "SIEM" behavior: not just visualizing past events, but reacting to
+      new ones.</li>
+  <li><strong>Tear it down and bring it back up cleanly.</strong>
+      <code>docker compose down -v</code>, then <code>up -d</code> again,
+      and re-run Steps 2-4 from scratch. Being comfortable destroying and
+      rebuilding your own SOC pipeline is a real operational skill, not
+      just a formality.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 16:</strong> you should have a running ELK+Grafana
+stack you brought up yourself, with at least one dashboard showing real
+data you shipped into it. Module 16 uses this same lab environment as the
+target for authorized vulnerability scanning — nmap and OpenVAS against
+your own deliberately-vulnerable lab VMs only.
+</div>
+
+</body>
+</html>

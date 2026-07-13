@@ -1,0 +1,80 @@
+{
+  "title": "Module 15 - Home SOC",
+  "uid": "module15-home-soc",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Alerts by type",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "elasticsearch", "uid": "module15-es" },
+      "targets": [
+        {
+          "query": "*",
+          "metrics": [{ "type": "count", "id": "1" }],
+          "bucketAggs": [{ "type": "terms", "field": "type.keyword", "id": "2" }]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Alerts over time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
+      "datasource": { "type": "elasticsearch", "uid": "module15-es" },
+      "targets": [
+        {
+          "query": "*",
+          "metrics": [{ "type": "count", "id": "1" }],
+          "bucketAggs": [{ "type": "date_histogram", "field": "@timestamp", "id": "2" }]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Port scan sources (table)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "elasticsearch", "uid": "module15-es" },
+      "targets": [
+        {
+          "query": "type:port_scan",
+          "metrics": [{ "type": "raw_data", "id": "1" }]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Beaconing candidates (table)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "elasticsearch", "uid": "module15-es" },
+      "targets": [
+        {
+          "query": "type:beaconing",
+          "metrics": [{ "type": "raw_data", "id": "1" }]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "conn.log volume (connected traffic baseline)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "elasticsearch", "uid": "module15-es" },
+      "targets": [
+        {
+          "query": "*",
+          "metrics": [{ "type": "count", "id": "1" }]
+        }
+      ]
+    }
+  ],
+  "annotations": { "list": [] },
+  "templating": { "list": [] }
+}

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 15 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 15 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+explain Docker Compose's internal networking model well enough to
+predict which hostname works from where, decode every line of this
+module's own <code>docker-compose.yml</code>, and explain precisely why
+NDJSON (not a JSON array) is the Bulk API's required format.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">Docker Compose's internal network — why hostnames differ by context</a></li>
+<li><a href="#sec2">Full docker-compose.yml walkthrough, line by line</a></li>
+<li><a href="#sec3">depends_on and service_healthy — why plain depends_on isn't enough</a></li>
+<li><a href="#sec4">Elasticsearch's document/index model, formally</a></li>
+<li><a href="#sec5">NDJSON — why not a JSON array, precisely</a></li>
+<li><a href="#sec6">Kibana Data Views — what they actually do</a></li>
+<li><a href="#sec7">Full code walkthrough — log_shipper.py</a></li>
+<li><a href="#sec8">Many worked scenarios</a></li>
+<li><a href="#sec9">Troubleshooting and common confusions</a></li>
+<li><a href="#sec10">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. Docker Compose's Internal Network — Why Hostnames Differ By Context</h2>
+
+<p>This is the single most common source of confusion for anyone new to
+Docker Compose, and deserves complete precision: THE SAME SERVICE is
+reachable at DIFFERENT hostnames depending on WHERE you're connecting
+FROM.</p>
+
+<table>
+<tr><th>Connecting from...</th><th>Correct hostname for Elasticsearch</th><th>Why</th></tr>
+<tr><td>Your own machine's browser/curl (the HOST)</td><td><code>127.0.0.1:9200</code> or <code>localhost:9200</code></td><td>Docker Compose's <code>ports: "127.0.0.1:9200:9200"</code> directive PUBLISHES the container's internal port 9200 onto your HOST machine's own loopback address — from the host's perspective, it genuinely looks like something is listening on localhost:9200</td></tr>
+<tr><td>ANOTHER container in the SAME Compose file (e.g., Kibana or Logstash)</td><td><code>elasticsearch:9200</code></td><td>Docker Compose automatically creates a PRIVATE internal network for all services in one compose file, and provides automatic DNS resolution using each service's OWN NAME (from the YAML key, e.g. <code>elasticsearch:</code>) as its hostname WITHIN that private network — this is EXACTLY why <code>kibana</code>'s own <code>ELASTICSEARCH_HOSTS=http://elasticsearch:9200</code> environment variable uses the SERVICE NAME, not <code>localhost</code></td></tr>
+</table>
+
+<div class="pitfall">
+<strong>The single most common Docker Compose networking mistake:</strong>
+using <code>localhost</code> INSIDE a container's own configuration to
+reach ANOTHER container. Inside any given container, <code>localhost</code>
+refers to THAT CONTAINER ITSELF (exactly Module 01 Section 2.3's loopback
+lesson, applied to containers instead of physical machines) — NOT the
+host machine, and NOT any other container. Kibana's own config
+correctly uses <code>elasticsearch</code> (the SERVICE name) specifically
+to avoid this exact trap — if it had instead used
+<code>localhost:9200</code>, Kibana would be trying to reach an
+Elasticsearch instance running INSIDE ITS OWN CONTAINER, which doesn't
+exist, and would fail to connect.
+</div>
+
+<div class="why">
+<strong>Why does Docker Compose provide this automatic service-name DNS
+resolution at all, rather than requiring hardcoded IP addresses?</strong>
+Container IP addresses within Docker's internal network are NOT
+guaranteed to stay the same across restarts — a container that's
+recreated (during a restart, an image update, or a `docker compose up`
+re-run) can be assigned a DIFFERENT internal IP address than it had
+before. Hardcoding IPs would break every time this happened. Service-name-based
+DNS resolution means configuration NEVER needs to hardcode an
+IP address at all — <code>elasticsearch</code> always resolves to
+"whichever container is currently running the elasticsearch service,"
+regardless of its actual, potentially-changing internal IP.
+</div>
+
+<h2 id="sec2">2. Full docker-compose.yml Walkthrough, Line By Line</h2>
+
+<h3>2.1 — The ports directive's three-part syntax</h3>
+<pre>ports:
+  - "127.0.0.1:9200:9200"</pre>
+<p>This is genuinely THREE distinct values, not two: HOST IP
+(<code>127.0.0.1</code> — bind ONLY to loopback on your host, per this
+module's own comment: "Everything binds to 127.0.0.1 only — see
+SAFETY.md," directly reusing Module 01's loopback-only safety principle),
+HOST PORT (<code>9200</code> — what you'd connect to FROM your host
+machine), CONTAINER PORT (<code>9200</code> — what the process INSIDE
+the container is actually listening on). These don't have to match —
+you could map host port 19200 to container port 9200
+(<code>"127.0.0.1:19200:9200"</code>) if port 9200 were already in use
+on your host by something else, without changing anything about what
+Elasticsearch itself is configured to do inside its container.</p>
+
+<h3>2.2 — Why xpack.security.enabled=false is explicitly flagged as home-lab-only</h3>
+<div class="why">
+<strong>Why does disabling Elasticsearch's built-in security features
+get an explicit, urgent warning comment ("NEVER do this on anything
+internet-facing") rather than just being silently configured?</strong>
+Elasticsearch's <code>xpack.security</code> features (authentication,
+TLS, role-based access control) exist specifically to prevent
+UNAUTHENTICATED access to your data. Disabling them is a genuinely
+reasonable simplification for a lab bound ONLY to <code>127.0.0.1</code>
+(Section 2.1's binding, meaning nothing outside your own machine can
+reach it AT ALL, regardless of Elasticsearch's own auth settings) — but
+if this SAME configuration were ever exposed on a real, internet-facing
+network interface (a genuine, real, and unfortunately common
+misconfiguration mistake in production), it would mean ANYONE who could
+reach that port could read, modify, or delete ALL of your indexed data
+with zero authentication required — a real, well-documented category of
+security incident. This module's own explicit warning comment is
+teaching real operational security discipline, not just documenting a
+setting.
+</div>
+
+<h3>2.3 — Volumes, precisely</h3>
+<pre>volumes:
+  - es-data:/usr/share/elasticsearch/data</pre>
+<p>This mounts a Docker-managed NAMED VOLUME (<code>es-data</code>,
+declared at the bottom of the file under <code>volumes:</code>) into the
+container's own data directory. Without this, ALL of Elasticsearch's
+indexed data would exist ONLY inside the container's own writable layer
+— and would be COMPLETELY LOST the moment the container is removed
+(not just stopped — REMOVED, which happens routinely during image
+updates or a <code>docker compose down</code> without <code>-v</code>).
+A named volume persists INDEPENDENTLY of the container's own lifecycle —
+this is precisely why this module's own teardown instructions
+distinguish <code>docker compose down</code> (stops and removes
+containers, but the named volume SURVIVES) from
+<code>docker compose down -v</code> (ALSO removes the volumes,
+genuinely, permanently deleting all indexed data) — a real, meaningful
+distinction worth being precise about before running either command.</p>
+
+<h2 id="sec3">3. depends_on And service_healthy — Why Plain depends_on Isn't Enough</h2>
+
+<pre>logstash:
+  depends_on:
+    elasticsearch:
+      condition: service_healthy
+...
+grafana:
+  depends_on:
+    - elasticsearch</pre>
+<div class="why">
+<strong>Why does logstash use the more elaborate
+<code>condition: service_healthy</code> form, while grafana uses the
+simpler list form?</strong> Plain <code>depends_on: - elasticsearch</code>
+(grafana's form) only guarantees STARTUP ORDER — Docker will start the
+elasticsearch container BEFORE starting grafana's — but says NOTHING
+about whether Elasticsearch is actually READY to accept connections yet
+(directly reusing Module 15's OWN tutorial2.html insight: a process
+starting is not the same as a service being ready). Logstash's
+<code>condition: service_healthy</code> form is STRICTER — it waits
+until Elasticsearch's own <code>healthcheck</code> block (Section 2.1's
+neighboring configuration: <code>curl -sf http://localhost:9200/_cluster/health</code>,
+repeated every 10 seconds, up to 10 retries) reports SUCCESS, meaning
+Elasticsearch has ACTUALLY finished its full JVM startup and cluster
+formation, before even attempting to start Logstash. Grafana's own
+connection-retry logic (built into Grafana itself) is more tolerant of a
+not-yet-ready Elasticsearch, so the simpler ordering-only dependency is
+an acceptable choice there — a genuine, deliberate difference in how
+much startup-readiness guarantee each dependent service actually needs.
+</div>
+
+<h2 id="sec4">4. Elasticsearch's Document/Index Model, Formally</h2>
+
+<div class="scenario">
+<h4>Worked scenario: tracing exactly what happens to one alert document, from Python dict to indexed, searchable data</h4>
+<pre>Module 14's raw finding (a plain Python dict):
+  {"type": "port_scan", "src": "192.168.1.30", "dst": "192.168.1.99",
+   "distinct_ports": 40, "window_seconds": 10}
+
+alert_to_document() adds two fields:
+  {"type": "port_scan", "src": "192.168.1.30", ..., "timestamp": "2026-...",
+   "source_module": "module-14-network-security-monitoring"}
+
+write_bulk_ndjson() wraps this in the Bulk API's action+source pair:
+  {"index": {"_index": "module15-alerts"}}
+  {"type": "port_scan", "src": "192.168.1.30", ..., "timestamp": "2026-..."}
+
+Once POSTed to Elasticsearch's /_bulk endpoint, Elasticsearch:
+  1. Looks at the action line -- "index" into "module15-alerts"
+  2. Since no explicit mapping was pre-declared for this index,
+     Elasticsearch uses DYNAMIC MAPPING -- inspecting the source
+     document's own fields and inferring a reasonable type for each
+     (type/src/dst as "text"/"keyword", distinct_ports as a number,
+     timestamp as a date -- this automatic inference is EXACTLY why
+     this module's own code never needs to pre-declare a schema)
+  3. The document becomes immediately searchable/aggregatable across
+     ALL its fields, ready for Kibana's Discover view or a Grafana panel
+     to query.</pre>
+</div>
+
+<h2 id="sec5">5. NDJSON — Why Not A JSON Array, Precisely</h2>
+
+<p>This module's own code comment states the Bulk API format precisely:
+"an action-and-metadata line, then a source line, repeated... NOT a JSON
+array." Understanding WHY this specific format was chosen (not merely
+THAT it's required) is worth being precise about.</p>
+
+<div class="why">
+<strong>Why NDJSON instead of one large JSON array containing all
+documents?</strong> A single JSON array requires the ENTIRE structure
+(every opening/closing bracket, every comma) to be syntactically
+complete and valid before ANY of it can be parsed at all — a single
+malformed document ANYWHERE in a huge array invalidates parsing of the
+WHOLE request. NDJSON (newline-delimited JSON) lets Elasticsearch
+process the bulk request as a STREAM — reading and processing one
+action/source PAIR at a time, without ever needing to hold the entire
+request in memory as one parsed structure first, and (in principle)
+allowing partial success reporting per-document rather than an
+all-or-nothing failure. This directly parallels Module 08 Section 5's
+explanation of WHY HTTP uses a blank-line terminator rather than a
+length-prefix scheme — both are examples of format designs favoring
+STREAMING/INCREMENTAL processing over requiring the full structure
+upfront.
+</div>
+
+<div class="scenario">
+<h4>Why validate_bulk_ndjson() checks for an EVEN line count specifically</h4>
+<pre>if len(lines) % 2 != 0:
+    raise ValueError("bulk file must have an even number of lines...")</pre>
+<p>Since EVERY document requires EXACTLY two lines (one action, one
+source — this module's own format, per Section 4's trace), a
+well-formed bulk file must ALWAYS have an even total line count — an
+ODD count is IMPOSSIBLE under correct construction and would indicate a
+genuine structural bug (a missing source line, or an extra stray line)
+BEFORE ever even attempting to parse individual lines as JSON. This is a
+cheap, fast STRUCTURAL sanity check performed before the more expensive
+per-line JSON parsing — a real, sensible validation-ordering principle
+(check cheap, structural invariants first; expensive, detailed
+validation second).</p>
+</div>
+
+<h2 id="sec6">6. Kibana Data Views — What They Actually Do</h2>
+
+<div class="why">
+<strong>Why does Kibana require you to explicitly create a "Data View"
+(matching a pattern like <code>module15-alerts-*</code>) before you can
+browse indexed data in Discover, rather than just showing everything
+automatically?</strong> A single Elasticsearch cluster can hold MANY
+completely unrelated indices (this module's own two:
+<code>module15-conn-*</code> and <code>module15-alerts-*</code>, each
+with genuinely different document SHAPES/fields) — a Data View tells
+Kibana specifically WHICH indices to include when you're browsing/
+visualizing, and lets Kibana correctly identify which field should be
+treated as the primary TIME field for time-based visualizations (the
+<code>@timestamp</code> field Logstash's own date filter assigns, per
+this module's Step 3). Without an explicit Data View, Kibana would have
+no principled way to decide which of potentially many, differently-shaped
+indices you actually want to explore in any given view.
+</div>
+
+<h2 id="sec7">7. Full Code Walkthrough — log_shipper.py</h2>
+
+<pre>def alert_to_document(alert: dict) -> dict:
+    doc = dict(alert)  # copy, don't mutate the caller's dict
+    doc["timestamp"] = datetime.now(timezone.utc).isoformat()
+    doc["source_module"] = "module-14-network-security-monitoring"
+    return doc</pre>
+<p><code>dict(alert)</code> creates a SHALLOW COPY specifically to avoid
+a real, common bug class: mutating a dictionary the CALLER still holds a
+reference to and might reuse. If this function instead wrote directly
+into the passed-in <code>alert</code> dict (<code>alert["timestamp"] =
+...</code>), calling this function TWICE on the SAME alert object
+(perhaps by accident, in a loop) would silently OVERWRITE the timestamp
+each time, and any other code still holding a reference to that same
+dict would see its unexpected mutation too — a genuinely real,
+worth-recognizing defensive programming pattern anytime a function
+receives a mutable object it doesn't intend to permanently alter for the
+caller.</p>
+
+<h2 id="sec8">8. Many Worked Scenarios</h2>
+
+<div class="scenario">
+<h4>Scenario: you run docker compose down (without -v), then up -d again — what survives, what doesn't?</h4>
+<pre>SURVIVES: es-data and grafana-data (named volumes) -- all previously
+  indexed Elasticsearch documents and any Grafana dashboards/settings
+  you'd saved persist across this cycle, because named volumes exist
+  independently of container lifecycle (Section 2.3).
+DOES NOT SURVIVE: any changes made ONLY inside a container's own
+  writable layer, outside a mounted volume path -- e.g., if you'd
+  manually edited a file inside the logstash container via `docker exec`
+  rather than editing logstash.conf on your host (which IS mounted, per
+  `./logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro`),
+  that manual edit would be lost, since a fresh container starts from
+  the ORIGINAL image content plus whatever's mounted from your host.</pre>
+</div>
+
+<h2 id="sec9">9. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: trying to reach Elasticsearch at
+"elasticsearch:9200" from your OWN machine's browser.</strong> This will
+fail with a DNS resolution error — <code>elasticsearch</code> is a
+hostname that ONLY resolves within Docker Compose's internal network
+(Section 1); your host machine's own DNS resolver has no idea what
+"elasticsearch" means. Always use <code>127.0.0.1:9200</code> (or
+<code>localhost:9200</code>) from your HOST machine, and
+<code>elasticsearch:9200</code> only from WITHIN another container's own
+configuration.
+</div>
+
+<div class="scenario">
+<h4>Confusion: "I copied alerts.jsonl into data/, but Kibana still shows the old data — why?"</h4>
+<p>Logstash's <code>file</code> input, by default, tracks its OWN
+READ POSITION per file (a "sincedb" mechanism) — it does NOT
+automatically re-read a file's ENTIRE contents just because the file was
+modified; it typically only reads NEW lines appended since its last
+read. If you REPLACED (rather than appended to) <code>alerts.jsonl</code>,
+Logstash's sincedb might still think it's already read past the file's
+current (shorter or different) content, and never re-ingest it — this
+module's own tutorial.html's Step 2 instruction to
+<code>docker compose restart logstash</code> after copying a new file is
+specifically there to force Logstash to reconsider its input state,
+directly addressing this exact real behavior.</p>
+</div>
+
+<h2 id="sec10">10. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 16, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Explain precisely which hostname (127.0.0.1 vs. service name) is
+correct for reaching Elasticsearch from any given context, and why.</li>
+<li>Decode the three parts of a Docker Compose <code>ports</code> entry
+and explain what a named volume protects against.</li>
+<li>Explain why <code>condition: service_healthy</code> is a stricter
+guarantee than plain <code>depends_on</code>, and when each is
+appropriate.</li>
+<li>Trace a single alert document's full journey from Python dict to
+searchable Elasticsearch document.</li>
+<li>Explain precisely why NDJSON (not a JSON array) is required for the
+Bulk API, connecting it to the same streaming-format principle behind
+HTTP's blank-line header terminator.</li>
+<li>Explain what a Kibana Data View actually does and why it's required
+before browsing indexed data.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 16 uses this same lab environment as a scanning
+target, and assumes you're comfortable with the underlying
+container/networking model well enough to troubleshoot connectivity
+issues without re-deriving Docker's networking behavior from scratch.</p>
+
+</body>
+</html>

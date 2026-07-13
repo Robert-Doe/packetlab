@@ -1,0 +1,65 @@
+# Module 15 -- a single-node ELK (Elasticsearch, Logstash, Kibana) +
+# Grafana stack, sized for a home lab, not production. Every version is
+# pinned so this doesn't silently break when images update.
+#
+# Bring it up:  docker compose up -d
+# Tear it down: docker compose down -v   (the -v also removes the data volume)
+#
+# Everything binds to 127.0.0.1 only -- see ../SAFETY.md.
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: module15-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false   # fine for a localhost-only home lab; NEVER do this on anything internet-facing
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"  # keep memory usage reasonable for a laptop
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.15.0
+    container_name: module15-logstash
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+      - ./data:/data:ro   # mount this module's conn.log / alerts.jsonl here
+    ports:
+      - "127.0.0.1:5044:5044"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: module15-kibana
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: module15-grafana
+    depends_on:
+      - elasticsearch
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=changeme_before_real_use
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  es-data:
+  grafana-data:

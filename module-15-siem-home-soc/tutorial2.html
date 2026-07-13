@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 15 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 15 — Deep Theory: Docker Compose and the ELK Stack, From Zero</h1>
+
+<h2>1. Command-by-Command: Docker Compose</h2>
+
+<h3><code>docker compose up -d</code></h3>
+<p><strong>What it does:</strong> reads <code>docker-compose.yml</code>,
+and for each defined <code>service</code>, downloads the specified
+container IMAGE (if not already cached locally) and starts a CONTAINER
+from it — a running instance of that image, isolated via the same
+kernel namespaces/cgroups mechanism Module 00c's deep theory covered.
+<code>-d</code> means "detached" — run in the background, returning your
+terminal immediately, rather than attaching your terminal to the
+containers' combined log output (which you can still view later with
+<code>docker compose logs</code>).</p>
+<div class="why">
+<strong>Why "image" and "container" are different words for different
+things:</strong> an IMAGE is a read-only TEMPLATE (like a class in
+object-oriented programming) — a filesystem snapshot plus metadata
+(what command to run, what ports to expose). A CONTAINER is a RUNNING
+INSTANCE of an image (like an object instantiated from that class) — you
+can start multiple containers from the same image, each with its own
+isolated process/filesystem view, independent of the others.
+</div>
+
+<h3>The <code>healthcheck</code> block (in docker-compose.yml)</h3>
+<p><strong>What it does:</strong> periodically runs a command INSIDE the
+Elasticsearch container (<code>curl -sf http://localhost:9200/_cluster/health</code>)
+to determine whether the service is actually ready to use, not just
+"the process has started." <strong>Why this distinction matters:</strong>
+Elasticsearch's process starts almost immediately, but the JAVA VIRTUAL
+MACHINE it runs on, its internal cluster formation, and its index
+initialization take real additional time — a naive "wait for the process
+to start" check would let Logstash (per
+<code>depends_on: condition: service_healthy</code>) try to connect and
+FAIL, because the underlying service, despite technically running, isn't
+actually ready to serve requests yet.</p>
+
+<h2>2. Elasticsearch's Document Model, Formally</h2>
+<p>Elasticsearch stores data as JSON DOCUMENTS, grouped into INDICES
+(the rough analog of a "table" in a traditional relational database,
+though Elasticsearch is NOT relational — no foreign keys, no joins in
+the traditional sense). Every document is automatically given a schema
+inferred from its own fields (a "dynamic mapping") unless you explicitly
+define one — this is why <code>log_shipper.py</code>'s
+<code>alert_to_document()</code> function can ship arbitrary JSON shapes
+without any prior schema declaration, and Elasticsearch will index
+whatever fields it sees.</p>
+
+<h2>3. The Bulk API's NDJSON Format, Precisely</h2>
+<p><code>log_shipper.py</code>'s <code>write_bulk_ndjson()</code>
+produces alternating ACTION and SOURCE lines — this is a REQUIRED,
+specific format, not a stylistic choice:</p>
+<pre>{"index": {"_index": "module15-alerts"}}
+{"type": "port_scan", "src": "192.168.1.30", ...}
+{"index": {"_index": "module15-alerts"}}
+{"type": "beaconing", "src": "192.168.1.10", ...}</pre>
+<p>Each ACTION line specifies what operation to perform (<code>index</code>
+here — create or replace) and which index it applies to; the SOURCE line
+immediately following it is that document's actual content. This
+alternating structure lets Elasticsearch process a huge batch of
+documents as a STREAM, one action-source pair at a time, without ever
+needing to parse the entire request into memory as one giant structure
+first (unlike a single large JSON array, which requires the full
+structure to be valid before ANY of it can be processed).</p>
+
+<h2>4. Logstash's Pipeline Stages, Formally</h2>
+<p><code>logstash.conf</code>'s three top-level blocks
+(<code>input</code>, <code>filter</code>, <code>output</code>) reflect
+Logstash's fundamental architecture: EVERY event flows through exactly
+this pipeline, in this order. <code>input</code> plugins (here,
+<code>file</code>) generate events from a source. <code>filter</code>
+plugins (here, <code>dissect</code> for parsing Zeek's TSV format, and
+<code>date</code> for assigning a real timestamp) transform each event.
+<code>output</code> plugins (here, <code>elasticsearch</code> and
+<code>stdout</code>) send the finished event somewhere. This
+input-filter-output separation is deliberate: the SAME filter logic
+could process events from a completely different input source (a Kafka
+topic instead of a file, for instance) without modification, and the
+SAME parsed event could be sent to multiple DIFFERENT outputs
+simultaneously — exactly why this module's config sends every event to
+BOTH Elasticsearch AND stdout at once.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Docker image vs. container, healthchecks</td><td>Module 17's container/Kubernetes networking security concepts</td></tr>
+<tr><td>Elasticsearch document/index model</td><td>General log-analysis literacy for any SOC/SIEM work</td></tr>
+<tr><td>NDJSON streaming format</td><td>General API design literacy — a recurring pattern in bulk data ingestion systems</td></tr>
+<tr><td>Logstash input-filter-output separation</td><td>General ETL (extract-transform-load) pipeline design literacy</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
