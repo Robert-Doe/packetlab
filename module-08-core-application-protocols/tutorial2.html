@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 08 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 08 — Deep Theory: DNS, DHCP, HTTP, Command by Command</h1>
+
+<h2>1. Command-by-Command: Testing the DNS Server</h2>
+
+<h3><code>dig @127.0.0.1 -p 5053 lab.test.</code></h3>
+<p><strong>What each piece means:</strong> <code>dig</code> ("domain
+information groper") is the standard Unix DNS query tool.
+<code>@127.0.0.1</code> tells it WHICH DNS server to query directly
+(without <code>@</code>, dig uses your system's configured default
+resolver) — the <code>@</code> syntax is dig-specific shorthand for "query
+this server." <code>-p 5053</code> specifies a non-default port (DNS
+normally uses port 53; this course's server deliberately uses 5053 to
+avoid needing root/admin privileges — see Module 08's own DECISIONS.md).
+The final argument, <code>lab.test.</code>, is the name being queried —
+note the TRAILING DOT, which formally denotes a "fully qualified domain
+name" (FQDN) — a name anchored to the DNS root, as opposed to a relative
+name that might have a search-domain suffix appended by the resolver.</p>
+
+<h3>Why nslookup (Windows) failed where dig succeeds</h3>
+<p>This was a real, confirmed finding during this module's build: modern
+Windows <code>nslookup</code>'s support for specifying a custom port
+alongside a custom server is inconsistent across Windows versions — in
+some cases it silently ignores the port and queries the real system
+resolver instead, which would give a confusing false "it doesn't work"
+impression when the SERVER was actually fine. This is exactly why this
+module's own <code>dns_client.py</code> (built with Python's
+<code>socket</code> module directly, giving full control over exactly
+which host/port is queried) is the verified, reliable cross-platform test
+path, with <code>dig</code> offered only as an optional extra for
+students who happen to have it.</p>
+
+<h2>2. DNS Message Structure, Fully Formal</h2>
+<p>Every DNS message (query or response) shares one structure: a 12-byte
+header (containing a 16-bit transaction ID for matching queries to
+responses, flags including the RCODE error/status field, and 4 count
+fields for how many entries follow in each section), followed by up to 4
+sections: Question, Answer, Authority, Additional. This course's
+<code>dns_server.py</code> only populates Question and Answer, but real
+DNS responses often use Authority (naming which server is authoritative
+for a zone) and Additional (bonus records the client is likely to need
+next, saving a round-trip) too.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does the DNS header
+include a 16-bit transaction ID, given that DNS typically runs over UDP
+(connectionless)?" Because UDP provides no built-in mechanism to match a
+response to its originating request — unlike TCP, where a connection's
+own state implicitly associates request and response. The transaction ID
+lets a client that may have MULTIPLE outstanding DNS queries in flight
+simultaneously (to the same or different servers) correctly match each
+incoming response back to the specific query that triggered it, and
+reject responses whose ID doesn't match anything outstanding (a real,
+if weak, defense against off-path DNS response spoofing — `dns_client.py`'s
+own `assert recv_id == sent_id` check demonstrates exactly this).
+</div>
+
+<h2>3. DHCP's DORA, in Full RFC 2131 Detail</h2>
+<p>The reason DORA is 4 messages, not 2 (a simple request/response),
+traces to a fundamental bootstrapping problem: a freshly-booted device has
+NO IP address yet, meaning it cannot be addressed directly by anything.
+DISCOVER must be broadcast (the only way to reach "everyone," since the
+client has no specific server to address). Multiple DHCP servers on the
+same segment might all respond with an OFFER. The client's REQUEST is
+ALSO broadcast — specifically so that every OTHER server that made an
+offer can see this broadcast and understand their own offer was declined,
+letting them release that tentatively-reserved address back to their own
+pool without ever receiving a direct rejection message.</p>
+
+<div class="why">
+<strong>Why does dhcp_dora_sim.py model this as a pure simulation instead
+of a real server?</strong> A real DHCP server binds to UDP port 67/68 and
+listens for BROADCAST traffic on the actual physical/Wi-Fi segment — on a
+home network, this is traffic from every device in the house, not just a
+test client. A buggy or misconfigured simulated server racing against
+your home router's own real DHCP server, and winning that race for a
+REAL device's DISCOVER broadcast, could hand that device a bogus lease
+and disconnect it — a real risk to other people's devices, not a
+hypothetical one, which is why this module's simulation never binds to
+a real network interface at all.
+</div>
+
+<h2>4. HTTP Status Codes, Systematically</h2>
+<p><code>http_server_from_scratch.py</code>'s 200/404/405 responses are
+three members of a formally organized system, RFC 9110's status code
+classes:</p>
+<table>
+<tr><th>Range</th><th>Class</th><th>Meaning</th></tr>
+<tr><td>1xx</td><td>Informational</td><td>Request received, processing continues (rare in ordinary use; e.g. 100 Continue)</td></tr>
+<tr><td>2xx</td><td>Success</td><td>The request was successfully received, understood, and accepted (200 OK is the workhorse of this class)</td></tr>
+<tr><td>3xx</td><td>Redirection</td><td>Further action needed to complete the request (e.g. 301 Moved Permanently)</td></tr>
+<tr><td>4xx</td><td>Client Error</td><td>The request itself was malformed or invalid (404 Not Found, 405 Method Not Allowed)</td></tr>
+<tr><td>5xx</td><td>Server Error</td><td>The request was valid, but the server failed to fulfill it (500 Internal Server Error)</td></tr>
+</table>
+<div class="brain">
+<strong>Brain power:</strong> why is 404 a 4xx (client error) rather than
+a 5xx (server error), given that the SERVER is the one deciding a route
+doesn't exist? Because from HTTP's perspective, the CLIENT made an error
+— it asked for a resource that doesn't exist at this server, which is
+categorized as a problem with the REQUEST itself (an invalid target),
+not a failure of the server's own processing. This distinction matters
+practically: a well-behaved client should generally NOT retry a 4xx
+request unmodified (the request itself was the problem), while retrying
+a 5xx request after a delay is often reasonable (the server may recover).
+</div>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>DNS transaction ID as UDP request/response matching</td><td>General literacy for any UDP-based protocol Module 07 didn't cover directly</td></tr>
+<tr><td>DHCP DORA's broadcast-based bootstrapping</td><td>Module 09's real home DHCP lease table inspection</td></tr>
+<tr><td>HTTP status code classes</td><td>Module 06's OSI Application-layer semantics, general web literacy for Tier 6 topics</td></tr>
+<tr><td>dig/nslookup command syntax</td><td>Module 14's DNS-based detection work, general operational DNS debugging</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

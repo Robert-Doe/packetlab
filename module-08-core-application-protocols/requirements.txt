@@ -1,0 +1,2 @@
+# No external dependencies -- every Python file in this module uses only
+# the standard library (socket, struct, random).

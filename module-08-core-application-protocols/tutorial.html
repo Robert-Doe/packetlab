@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 08 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 08 — Tutorial</h1>
+<p>Goal: build the three protocols that make the internet usable to
+humans — DNS (names instead of IPs), DHCP (automatic addressing), and
+HTTP (the actual request/response format every web page rides on) — and
+see exactly what a real client (curl, your own future browser code)
+requires from each.</p>
+
+<h2>Step 1 — DNS: a real authoritative server, real wire format</h2>
+<pre>cd module-08-core-application-protocols
+python dns_server.py</pre>
+<pre># separate terminal
+python dns_client.py</pre>
+<div class="expect"><strong>Expected:</strong> <code>lab.test.</code> and
+<code>www.lab.test.</code> resolve to their configured IPs;
+<code>nonexistent.test.</code> comes back NXDOMAIN (rcode 3). Every byte on
+the wire was built with <code>struct</code>, same technique as Module 02's
+<code>layer_builder.py</code> — DNS is just another protocol with a defined
+byte layout, not a special case.</div>
+<div class="note">If you have <code>dig</code> installed (standard on
+Linux/Mac, not on Windows by default), you can also try:
+<pre>dig @127.0.0.1 -p 5053 lab.test.</pre>
+Windows' built-in <code>nslookup</code> does NOT reliably support a custom
+port across versions (confirmed during this module's own testing — it
+silently queried the real resolver instead) — <code>dns_client.py</code> is
+this module's verified, cross-platform way to test the server.</div>
+
+<h2>Step 2 — DHCP: DORA, safely simulated</h2>
+<pre>python dhcp_dora_sim.py</pre>
+<div class="expect"><strong>Expected:</strong> two clients acquire leases
+normally, a third client's re-DISCOVER gets its existing lease offered
+back (not a new one), pool exhaustion after the 3-address pool fills up
+(the 4th client gets no offer at all — this is literally what causes a
+real device to fall back to a 169.254.x.x APIPA address), and a released
+lease gets handed to a new client.</div>
+<div class="note">
+<strong>Why this isn't a real DHCP server:</strong> a real DHCP server
+binds to UDP ports 67/68 and listens for broadcast traffic on your actual
+LAN. If you ran one on your home network, it would compete with your
+router's own DHCP server for every device that boots up — and if yours
+answered first, a real device could get a bogus lease and lose
+connectivity. That's a real risk to other people's devices in your house,
+not a hypothetical one, so this module simulates the protocol's logic
+entirely in software instead. See ../SAFETY.md.
+</div>
+
+<h2>Step 3 — HTTP: what Flask was hiding from you</h2>
+<pre>python http_server_from_scratch.py</pre>
+<pre># separate terminal -- use a REAL HTTP client, not this course's own code
+curl -i http://127.0.0.1:8090/
+curl -i http://127.0.0.1:8090/about
+curl -i http://127.0.0.1:8090/nope
+curl -i -X POST http://127.0.0.1:8090/</pre>
+<div class="expect"><strong>Expected:</strong> 200 responses for the two
+known routes, 404 for <code>/nope</code>, 405 for the POST request — and
+critically, <code>curl</code> (a real, independent HTTP client with no
+special knowledge of this course) is completely satisfied by every
+response, because the bytes this server sends are genuinely valid
+HTTP/1.1, assembled by hand with plain string formatting, no framework
+involved.</div>
+
+<h2>Step 4 — compare against every earlier module's servers</h2>
+<p>Every server before this module (Module 01's dashboard, Module 02's
+target server, Module 07's echo servers) used Flask. Open
+<code>http_server_from_scratch.py</code> next to any of them —
+notice everything Flask was doing invisibly: parsing the request line,
+splitting headers on <code>:</code>, building a correctly-formatted status
+line, setting <code>Content-Length</code> to the exact byte count. None of
+that is Flask magic — it's exactly the code you just wrote, just usually
+hidden behind one line: <code>return "some string"</code>.</p>
+
+<h2>Exercises before Module 09</h2>
+<ol>
+  <li><strong>Add a second DNS record type.</strong> Extend
+      <code>dns_server.py</code>/<code>.js</code> to answer type 28 (AAAA,
+      IPv6) queries for a new zone entry, alongside the existing A records.
+      You'll need to change the RDATA length from 4 to 16 bytes and encode
+      an IPv6 address's 16 bytes correctly.</li>
+  <li><strong>Break http_server_from_scratch.py on purpose.</strong> Send a
+      request with <code>curl --http1.0</code> instead of the default
+      HTTP/1.1, and watch how <code>parse_request</code> handles (or
+      mishandles) the different version string. Then try sending a request
+      with NO blank line at all (a raw socket write, not curl) and confirm
+      the server hangs on <code>recv()</code> forever — this is exactly why
+      DECISIONS.md flags the single-<code>recv()</code> simplification as
+      something a production server can't get away with.</li>
+  <li><strong>Give the DHCP simulation lease expiration.</strong> Add a
+      simulated "tick" counter and a lease duration; after a lease's tick
+      count exceeds its duration without renewal, automatically release it
+      back to the pool. This is the piece real DHCP servers have that this
+      module's simplified simulation doesn't.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 09:</strong> you should be able to explain what DNS,
+DHCP, and HTTP each actually do at the byte level, not just "DNS resolves
+names." Module 09 takes everything from Modules 01-08 out of pure
+simulation and onto your actual home network — configuring your real Cox
+modem into bridge mode and standing up your own router/firewall in front
+of it.
+</div>
+
+</body>
+</html>

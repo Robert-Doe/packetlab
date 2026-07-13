@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 08 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 08 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+decode a raw DNS packet's bytes by hand, narrate DHCP's full DORA
+exchange with precise reasoning for why each step broadcasts, and
+explain exactly what makes a byte stream "a valid HTTP request" from
+first principles.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">The DNS wire format, completely decoded, byte by byte</a></li>
+<li><a href="#sec2">DNS name encoding and message compression, traced</a></li>
+<li><a href="#sec3">DHCP's DORA exchange — why every step broadcasts, precisely</a></li>
+<li><a href="#sec4">DHCP lease pool exhaustion — the full scenario, traced</a></li>
+<li><a href="#sec5">HTTP/1.1's wire format — what actually makes a request valid</a></li>
+<li><a href="#sec6">Why Content-Length exists, and what breaks without it</a></li>
+<li><a href="#sec7">Full code walkthrough — dns_server.py's compression pointer</a></li>
+<li><a href="#sec8">Full code walkthrough — http_server_from_scratch.py's parsing</a></li>
+<li><a href="#sec9">Many worked scenarios across all three protocols</a></li>
+<li><a href="#sec10">Troubleshooting and common confusions</a></li>
+<li><a href="#sec11">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. The DNS Wire Format, Completely Decoded, Byte By Byte</h2>
+
+<p><code>parse_query()</code>'s <code>struct.unpack("!HHHHHH", data[:12])</code>
+unpacks DNS's fixed 12-byte header — worth decoding field by field,
+including the FLAGS field's own internal bit structure.</p>
+
+<table>
+<tr><th>Field</th><th>Size</th><th>Meaning</th></tr>
+<tr><td>ID</td><td>2 bytes</td><td>A number the CLIENT chooses and the server echoes back unchanged — lets a client match a response to the specific query it sent, since UDP (Module 07's territory) has no built-in request/response correlation of its own</td></tr>
+<tr><td>Flags</td><td>2 bytes</td><td>Packed sub-fields (see below)</td></tr>
+<tr><td>QDCOUNT</td><td>2 bytes</td><td>Number of questions in this message (always 1 in ordinary queries)</td></tr>
+<tr><td>ANCOUNT</td><td>2 bytes</td><td>Number of answer records — 0 in a query, 1 in this server's successful responses</td></tr>
+<tr><td>NSCOUNT / ARCOUNT</td><td>2+2 bytes</td><td>Authority and additional records — unused (0) in this module's minimal server</td></tr>
+</table>
+
+<div class="scenario">
+<h4>Worked scenario: decoding the flags value 0x8180, bit by bit</h4>
+<pre>0x8180 = binary 1000 0001 1000 0000
+
+Bit 15 (QR):     1  -- this is a RESPONSE (0 would mean query)
+Bits 14-11 (Opcode): 0000 -- standard query
+Bit 10 (AA):     0  -- NOT set here... wait, let's recompute precisely:
+
+Actually laying out all 16 bits of 0x8180:
+  1 0 0 0 0 0 0 1 1 0 0 0 0 0 0 0
+  |                 |
+  QR=1              RA=1
+
+Bit 15: QR = 1 (response)
+Bits 14-11: Opcode = 0000 (standard query)
+Bit 10: AA = 0 (this simple server doesn't set "authoritative answer" explicitly here)
+Bit 9: TC = 0 (not truncated)
+Bit 8: RD = 0 (recursion NOT requested in this bit's position on the response echo)
+Bit 7: RA = 1 (recursion available -- bit flows into the second byte: 1000 0000)
+Bits 6-4: Z = 000 (reserved, must be zero)
+Bits 3-0: RCODE = 0000 (0 = no error, success)
+
+The SECOND value, 0x8183, differs ONLY in the last 4 bits: RCODE = 0011
+(3) -- decimal 3 is NXDOMAIN, "this name does not exist" -- exactly the
+response build_response() sends for an unmatched qname.</pre>
+</div>
+
+<table>
+<tr><th>RCODE value</th><th>Meaning</th></tr>
+<tr><td>0</td><td>No error — success</td></tr>
+<tr><td>1</td><td>Format error — the server couldn't interpret the query</td></tr>
+<tr><td>2</td><td>Server failure</td></tr>
+<tr><td>3</td><td>NXDOMAIN — the queried name genuinely does not exist</td></tr>
+</table>
+
+<div class="why">
+<strong>Why pack SO MANY distinct pieces of information (QR, Opcode, AA,
+TC, RD, RA, Z, RCODE) into a single 16-bit field, rather than giving each
+its own byte?</strong> This is a direct, deliberate BANDWIDTH
+optimization, genuinely important for DNS specifically: DNS was
+designed to operate efficiently over UDP with small packets, and every
+byte of overhead in a query/response pair multiplies across the
+enormous global volume of DNS traffic. Packing 8 distinct pieces of
+boolean/small-integer information into exactly 2 bytes (rather than the
+8+ bytes separate fields might otherwise require) is a real, deliberate
+efficiency decision baked into the protocol's original 1987 design
+(RFC 1035) — the same bit-packing philosophy Module 02's TCP flags byte
+and Module 03's VLAN TCI field also employ.</div>
+
+<h2 id="sec2">2. DNS Name Encoding And Message Compression, Traced</h2>
+
+<h3>2.1 — Length-prefixed labels, traced completely</h3>
+<div class="scenario">
+<h4>Worked scenario: encoding "www.lab.test." byte by byte, matching encode_qname() exactly</h4>
+<pre>Name: "www.lab.test." (trailing dot stripped first: "www.lab.test")
+Split on ".": ["www", "lab", "test"]
+
+For each label, write ONE LENGTH BYTE followed by that many raw ASCII bytes:
+
+  len("www")=3:  03 77 77 77           (0x03, then 'w','w','w')
+  len("lab")=3:  03 6c 61 62           (0x03, then 'l','a','b')
+  len("test")=4: 04 74 65 73 74        (0x04, then 't','e','s','t')
+
+Terminate with a single zero byte (an implicit "label of length 0",
+meaning "no more labels, name is complete"):
+  00
+
+Full encoding: 03 77 77 77 03 6c 61 62 04 74 65 73 74 00
+(14 bytes total for a 13-character name plus its dots -- the length
+bytes REPLACE the dots as the delimiter mechanism)</pre>
+<p><code>decode_qname()</code> performs the EXACT reverse: read one
+length byte, if it's 0 the name is complete; otherwise read THAT MANY
+bytes as the next label, and repeat — this is precisely why the function
+is a <code>while True</code> loop reading a variable number of labels,
+rather than a fixed-size unpack like the 12-byte header.</p>
+</div>
+
+<h3>2.2 — The compression pointer, precisely</h3>
+<p><code>build_response()</code>'s answer section starts with
+<code>struct.pack("!H", 0xC00C)</code> instead of re-encoding the full
+name again. This is DNS MESSAGE COMPRESSION — a real, standard technique
+(RFC 1035 Section 4.1.4), not a shortcut unique to this module.</p>
+
+<div class="why">
+<strong>Why does a compression pointer specifically use 0xC00C, and what
+does that number actually encode?</strong> The TOP TWO BITS of a
+compression pointer are always <code>11</code> (binary) — this is what
+distinguishes a POINTER from an ordinary LENGTH BYTE when a parser
+encounters it: an ordinary label length is always 0-63 (fitting in 6
+bits, since the top 2 bits are reserved for exactly this
+pointer-vs-length distinction), so any byte starting with two 1-bits
+CANNOT be a legitimate length byte, unambiguously signaling "the
+remaining 14 bits are an OFFSET, not a length." <code>0xC00C</code> in
+binary is <code>11000000 00001100</code> — the leading <code>11</code>
+marks it as a pointer, and the remaining 14 bits (<code>0000000000
+1100</code> = 12 decimal) point to BYTE OFFSET 12 in the message — which
+is EXACTLY where the question section's qname begins (right after the
+fixed 12-byte header). Rather than repeating "www.lab.test." a second
+time in the answer section, the server simply says "the name here is
+IDENTICAL to whatever's at offset 12" — a genuine, meaningful bandwidth
+saving that becomes significant at DNS's real global scale, though
+completely invisible unless you understand exactly what those two bytes
+mean.
+</div>
+
+<h2 id="sec3">3. DHCP's DORA Exchange — Why Every Step Broadcasts, Precisely</h2>
+
+<p>DORA = Discover, Offer, Request, Acknowledge — DHCP's real 4-step
+exchange, and understanding WHY each step uses BROADCAST (not unicast)
+communication is the actual substance behind the acronym, not just the
+acronym itself.</p>
+
+<div class="scenario">
+<h4>The full DORA exchange, narrated with precise reasoning at each step</h4>
+<ol>
+<li><strong>DHCPDISCOVER (client → broadcast):</strong> a client that
+just booted has NO IP ADDRESS AT ALL yet — it cannot send a unicast
+packet to a specific server's address, because unicast requires a
+SOURCE address too (and the client has none), and it doesn't even know
+which device on the network IS a DHCP server. Broadcasting is the ONLY
+option available: "is ANYONE out there able to give me an address?" —
+directly analogous to Module 01/03's ARP broadcast mechanism, solving
+the identical "I don't know who to ask directly" bootstrapping
+problem.</li>
+<li><strong>DHCPOFFER (server → broadcast, conventionally):</strong> the
+server responds (in real DHCP, this is ALSO typically broadcast, since
+the client still has no confirmed address to unicast to yet) with a
+proposed IP address — this module's own <code>handle_discover()</code>
+reserves it TENTATIVELY (<code>self.offered[mac] = ip</code>), NOT yet a
+confirmed lease, because multiple DHCP servers could theoretically
+respond to the same DISCOVER (a real scenario on networks with more than
+one DHCP server, exactly the DANGER this module's own DECISIONS.md warns
+about for running an unintended second server on your real home
+network).</li>
+<li><strong>DHCPREQUEST (client → broadcast):</strong> the client
+broadcasts AGAIN — even though it now knows exactly which server offered
+it an address — specifically so EVERY DHCP server on the network
+(including any OTHER servers that might have also sent an offer) can see
+which offer the client actually accepted, letting any non-chosen
+servers release their own tentative reservations back to their pools.</li>
+<li><strong>DHCPACK (server → broadcast):</strong> the chosen server
+confirms — this module's own <code>handle_request()</code> converts the
+tentative <code>offered</code> entry into a permanent
+<code>leases</code> entry — and the client can NOW configure its
+interface with the confirmed IP, gateway, and DNS settings.</li>
+</ol>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does DHCPREQUEST
+broadcast, even though the client already knows exactly which server to
+talk to at that point?" A precise answer must reference the MULTI-SERVER
+scenario specifically — broadcasting the REQUEST (rather than unicasting
+it directly to the chosen server) ensures ALL DHCP servers on the
+network segment become aware of the client's choice, letting any OTHER
+server that also sent a tentative offer release ITS OWN reservation
+back to its own pool, rather than needlessly holding an address hostage
+that the client never intended to use. This is a genuine
+network-efficiency/correctness mechanism, not an arbitrary protocol
+quirk.
+</div>
+
+<h2 id="sec4">4. DHCP Lease Pool Exhaustion — The Full Scenario, Traced</h2>
+
+<div class="scenario">
+<h4>Complete trace, matching this module's own real (tested) output exactly</h4>
+<pre>Pool: 3 addresses (192.0.2.100, .101, .102)
+
+client_a acquires -> gets .100 (pool: [.101, .102] remain)
+client_b acquires -> gets .101 (pool: [.102] remains)
+client_a re-acquires (simulating a reboot) -> handle_discover() checks
+  "mac in self.leases" FIRST -- TRUE -- offers back the SAME .100,
+  does NOT consume a new address from the pool at all
+client_c acquires -> gets .102 (pool: [] -- now EMPTY)
+client_d acquires -> handle_discover(): "if not self.available: return None"
+  -- pool is empty, NO offer at all -- client_d's acquire() prints
+  "no DHCPOFFER received -- staying unconfigured (this is what
+  169.254.x.x APIPA addresses mean in real life)"
+
+server.release(client_b.mac) -> .101 returned to available pool
+client_e acquires -> gets .101 (client_b's former address, now reused)</pre>
+<p>This directly and precisely connects back to Module 01 Section 8.4's
+APIPA discussion: <code>client_d</code>'s failure to get ANY offer is
+EXACTLY the real-world scenario that produces a genuine
+<code>169.254.x.x</code> self-assigned address on a real device — this
+module's simulation makes that failure mode's ROOT CAUSE (pool
+exhaustion) directly visible and traceable, rather than just naming the
+symptom.</p>
+</div>
+
+<h2 id="sec5">5. HTTP/1.1's Wire Format — What Actually Makes A Request Valid</h2>
+
+<p>An HTTP request is, underneath everything, just a specifically
+FORMATTED chunk of TEXT (mostly — bodies can be binary, but headers are
+always plain ASCII text) sent over an already-established TCP
+connection (Module 07's territory) — no special "HTTP protocol" magic
+beyond text formatting conventions.</p>
+
+<div class="scenario">
+<h4>Worked scenario: a complete, minimal, valid HTTP request, byte by byte</h4>
+<pre>GET /about HTTP/1.1\r\n
+Host: 127.0.0.1:8090\r\n
+\r\n
+
+Line 1 (the REQUEST LINE): method, path, version, separated by single
+  spaces, terminated by \r\n (carriage return + newline -- HTTP's line
+  ending convention, NOT just \n, a real, easy-to-miss detail if you
+  ever hand-craft a raw request yourself).
+Line 2 (a HEADER): "Host: 127.0.0.1:8090" -- a name, a colon, a value.
+BLANK LINE (just \r\n with nothing before it): this is THE signal that
+  marks "headers are finished, whatever follows (if anything) is the
+  body." This blank line is not optional decoration -- it's a required,
+  load-bearing structural marker.</pre>
+</div>
+
+<div class="why">
+<strong>Why is the blank line (an empty \r\n) specifically what
+terminates the headers, rather than, say, a fixed header count or a
+length prefix?</strong> HTTP was designed as a genuinely HUMAN-READABLE,
+TEXT-BASED protocol from the start — a blank line is a natural,
+intuitive "section break" a human typing a request by hand (via a raw
+telnet session, historically a completely normal way to manually test an
+HTTP server) would find obvious, unlike a binary length-prefix scheme.
+This directly explains <code>parse_request()</code>'s own implementation:
+<code>raw.partition(b"\r\n\r\n")</code> splits the ENTIRE raw bytes at
+the FIRST occurrence of two consecutive CRLF sequences — exactly the
+blank-line boundary — separating headers from whatever body bytes (if
+any) follow.
+</div>
+
+<h2 id="sec6">6. Why Content-Length Exists, And What Breaks Without It</h2>
+
+<p><code>build_response()</code>'s <code>Content-Length: {len(body)}</code>
+header answers a question that would otherwise be genuinely ambiguous: "how
+does the CLIENT know when the response body has finished arriving, given
+TCP delivers a continuous byte stream with no built-in message
+boundaries (Module 07 Section 3)?"</p>
+
+<div class="scenario">
+<h4>Scenario: what would happen WITHOUT Content-Length (or an equivalent mechanism)</h4>
+<p>Without SOME way to know the body's expected length in advance, a
+client reading from the TCP connection would have NO reliable way to
+know "has the FULL response arrived, or is more data still coming?" —
+it might read a body that's actually still incomplete (arrived across
+multiple TCP segments, per Module 07's own byte-stream model) and act on
+truncated data, or wait indefinitely for more bytes that will never
+come. This is EXACTLY why this module's own <code>build_response()</code>
+computes <code>len(body)</code> and reports it explicitly — giving the
+client's parser a precise, unambiguous stopping point. (Real HTTP also
+supports an ALTERNATIVE mechanism, chunked transfer encoding, for cases
+where the total length isn't known in advance — genuinely out of this
+module's minimal scope, but worth knowing exists.)</p>
+</div>
+
+<div class="why">
+<strong>Why does build_response() also send <code>Connection: close</code>
+explicitly?</strong> This tells the client "after this response, I (the
+server) am going to close the TCP connection — don't expect to reuse it
+for another request." This is a DELIBERATE simplification matching this
+module's own single-request-per-connection design
+(<code>handle_connection()</code> handles exactly ONE request then
+returns, closing via the <code>with conn:</code> context manager) —
+real HTTP/1.1 servers commonly support "keep-alive" (reusing one TCP
+connection for multiple sequential requests, avoiding the overhead of a
+fresh 3-way handshake, Module 07 Section 1, for every single request) —
+explicitly declaring <code>Connection: close</code> here is honest about
+this module's own simpler behavior rather than implying keep-alive
+support it doesn't actually implement.
+</div>
+
+<h2 id="sec7">7. Full Code Walkthrough — dns_server.py's Compression Pointer</h2>
+
+<pre>answer = struct.pack("!H", 0xC00C)
+answer += struct.pack("!HH", 1, 1)  # TYPE=A, CLASS=IN
+answer += struct.pack("!I", 300)     # TTL: 300 seconds
+ip_bytes = bytes(int(o) for o in ip.split("."))
+answer += struct.pack("!H", 4) + ip_bytes  # RDLENGTH=4, RDATA=the IP</pre>
+<p>Reading this field by field: the compression pointer (Section 2.2)
+replaces the name; TYPE=1 means an A record specifically (an IPv4
+address record — TYPE=28 would be AAAA/IPv6, exactly what this module's
+own Exercise 1 asks you to implement); CLASS=1 means IN (Internet — DNS
+was originally designed to support other, non-Internet "classes" that
+never saw real-world use, but the field remains for historical/format
+reasons); TTL=300 tells the QUERYING client's resolver how long (in
+seconds) it may CACHE this answer before re-querying (directly
+implementing Module 01 Section 6.2's "warm cache" scenario — this
+specific number is where that caching duration actually comes from);
+RDLENGTH=4 states the RDATA field's length explicitly (4 bytes for an
+IPv4 address — this is why AAAA records need RDLENGTH=16 instead, per
+Exercise 1); RDATA is the actual 4 raw address bytes.</p>
+
+<h2 id="sec8">8. Full Code Walkthrough — http_server_from_scratch.py's Parsing</h2>
+
+<pre>name, _, value = line.partition(b":")
+headers[name.decode().strip().lower()] = value.decode().strip()</pre>
+<p><code>.partition(b":")</code> splits a header line at the FIRST colon
+only, returning a 3-tuple (before, separator, after) — deliberately
+different from <code>.split(":")</code>, which would split at EVERY
+colon and potentially break header VALUES that legitimately contain
+colons themselves (a <code>Host: 127.0.0.1:8090</code> header's value
+contains a colon as part of the port number — <code>.split(":")</code>
+would incorrectly produce THREE pieces instead of two).
+<code>.lower()</code> on the header NAME specifically (not the value)
+reflects a real HTTP specification detail: header NAMES are
+case-insensitive by the HTTP spec (<code>Host</code>,
+<code>host</code>, and <code>HOST</code> are all the same header), so
+normalizing to lowercase before storing in the dictionary ensures
+lookups work correctly regardless of how a specific client happened to
+capitalize its header names.</p>
+
+<h2 id="sec9">9. Many Worked Scenarios Across All Three Protocols</h2>
+
+<div class="scenario">
+<h4>Scenario: what does dig @127.0.0.1 -p 5053 nonexistent.test. actually show, byte-for-byte reasoning</h4>
+<p>The server's <code>ZONE.get(qname)</code> lookup returns
+<code>None</code> (not present in the tiny <code>ZONE</code>
+dictionary). <code>build_response()</code>'s <code>if not ip:</code>
+branch fires: <code>flags = 0x8183</code> (RCODE=3, NXDOMAIN, per
+Section 1's bit trace), <code>ancount=0</code> (no answer records at
+all), and the function returns JUST the header plus the question section
+— no answer section, since there's nothing to answer with. This is
+EXACTLY what a real authoritative server does for a genuinely
+nonexistent name — the response structure ITSELF (an empty answer
+section plus RCODE 3) IS the "does not exist" signal, not some separate,
+additional mechanism.</p>
+</div>
+
+<h2 id="sec10">10. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: expecting Windows' built-in nslookup to work
+against a custom port reliably.</strong> This module's own real testing
+confirmed nslookup silently ignored the custom port and queried the
+REAL system resolver instead on Windows — a genuine, documented
+cross-platform tool limitation, not a bug in this module's own DNS
+server. Always use this module's own <code>dns_client.py</code> (or
+<code>dig</code>, if available) for verified, cross-platform testing
+against a non-standard port.
+</div>
+
+<div class="scenario">
+<h4>Confusion: "why does http_server_from_scratch.py hang forever if a request has no blank line at all?"</h4>
+<p>This is EXACTLY the scenario this module's own Exercise 2 asks you to
+reproduce and understand: <code>conn.recv(4096)</code> reads WHATEVER
+bytes have arrived so far — if the blank-line terminator
+(<code>\r\n\r\n</code>) never arrives (a malformed or deliberately
+incomplete request), <code>parse_request()</code> never even gets
+called with COMPLETE data, and worse, this module's simplified
+single-<code>recv()</code>-call design (explicitly flagged in its own
+code comment as a simplification) never loops to check for MORE
+incoming data either — it just reads once and tries to parse whatever
+partial bytes happened to arrive in that one call. A production-grade
+server would loop, calling <code>recv()</code> repeatedly and
+accumulating bytes until it EITHER finds the blank-line terminator OR
+hits a timeout/maximum-size limit — this module's own DECISIONS.md
+explicitly flags this exact simplification as something a real,
+production server cannot get away with.</p>
+</div>
+
+<h2 id="sec11">11. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 09, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Decode a DNS header's flags field bit by bit, including computing
+RCODE and identifying QR/RA bits.</li>
+<li>Encode a domain name into length-prefixed DNS label format by hand,
+and explain precisely what a 0xC0-prefixed compression pointer means.</li>
+<li>Narrate DHCP's full DORA exchange, explaining PRECISELY why each
+step broadcasts rather than unicasts.</li>
+<li>Trace a DHCP lease pool through exhaustion and release, connecting
+pool exhaustion directly to real-world APIPA addresses.</li>
+<li>Identify every structural element of a raw HTTP request (request
+line, headers, blank line terminator) and explain what specifically
+would break if the blank line were missing.</li>
+<li>Explain precisely why Content-Length is necessary given TCP's
+byte-stream (not message-based) delivery model.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 09 moves these exact protocols (DNS, DHCP served by
+your real router, HTTP) out of simulation and onto your actual home
+network, and assumes you understand what's happening at the protocol
+level well enough to recognize it in real traffic.</p>
+
+</body>
+</html>
