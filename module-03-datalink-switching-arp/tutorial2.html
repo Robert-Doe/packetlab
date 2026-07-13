@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 03 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 03 — Deep Theory: Switching, ARP, and VLANs, Command by Command</h1>
+
+<h2>1. Command-by-Command: Clearing and Rebuilding Your ARP Cache</h2>
+
+<h3><code>arp -d *</code> (Windows, run as Administrator)</h3>
+<p><strong>What it does:</strong> deletes every entry in your machine's
+ARP cache. <strong>Why admin/root is required:</strong> the ARP cache is
+shared kernel state that affects how EVERY process on your machine
+resolves IP-to-MAC mappings — an unprivileged process being able to wipe
+it (or worse, insert fake entries) would be a serious security hole,
+since it would let any user-level program potentially redirect other
+processes' traffic. This same privilege requirement is why Module 03's
+own <code>switch_sim.py</code> never touches your machine's REAL ARP
+cache at all — it's a pure software model with its own separate,
+in-memory table, entirely sidestepping the need for elevated privileges.</p>
+
+<h3><code>sudo ip neigh flush all</code> (Linux)</h3>
+<p><strong>What it does:</strong> the modern Linux equivalent of
+<code>arp -d *</code>. "neigh" (neighbor) is Linux's more general term for
+this table, because the same underlying mechanism (and largely the same
+kernel table) also handles IPv6's Neighbor Discovery Protocol, which
+plays a role similar to ARP but works differently under the hood (NDP
+uses ICMPv6 messages rather than a dedicated EtherType, and doesn't rely
+on broadcast the way ARP does — IPv6 has no broadcast address at all,
+using multicast instead).</p>
+
+<h3><code>ping -n 1 192.168.0.1</code> / <code>ping -c 1 192.168.0.1</code></h3>
+<p><strong>What the flags mean:</strong> <code>-n 1</code> (Windows) and
+<code>-c 1</code> (Mac/Linux) both mean "send exactly 1 ping and stop" —
+without this flag, <code>ping</code> on Linux/Mac runs forever until you
+manually stop it (Ctrl+C), while Windows defaults to sending exactly 4
+and stopping automatically. <strong>Why this triggers a fresh ARP
+entry:</strong> your machine cannot send ANY IP packet to a destination
+on your local network segment without first knowing that destination's
+MAC address (Ethernet frames are addressed by MAC, not IP — this is the
+entire reason ARP exists, bridging Layer 3 addressing to Layer 2
+addressing). Since you just flushed the cache, this ping FORCES a fresh
+ARP request/reply exchange before the ICMP echo can even be transmitted.</p>
+
+<h2>2. The Switch Algorithm, Formally</h2>
+
+<p><code>switch_sim.py</code>'s <code>Switch.receive()</code> implements
+what's formally called "transparent bridging" (or "learning bridge"
+behavior) — the algorithm EVERY Ethernet switch uses, whether a $20 home
+switch or a $50,000 enterprise chassis:</p>
+
+<pre>function receive(frame, incoming_port):
+    learn: CAM_table[(vlan, frame.source_mac)] = incoming_port
+    if frame.destination_mac == BROADCAST:
+        flood(frame, vlan, except=incoming_port)
+    elif (vlan, frame.destination_mac) in CAM_table:
+        forward(frame, CAM_table[(vlan, frame.destination_mac)])
+    else:
+        flood(frame, vlan, except=incoming_port)  # "unknown unicast flooding"</pre>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Is a switch a Layer 2 or
+Layer 3 device, and does this algorithm ever need to inspect an IP
+address?" A switch is purely Layer 2 — every decision in the algorithm
+above operates ENTIRELY on MAC addresses and VLAN tags; it never looks at
+an IP header at all, even when the frame it's forwarding happens to
+contain an IP packet inside it. This is precisely why a switch can
+forward ARP requests, IPv4 packets, IPv6 packets, or any other EtherType
+identically — its forwarding decision is blind to what's encapsulated
+inside the frame it's moving.
+</div>
+
+<h2>3. ARP's Complete Message Exchange, Formally</h2>
+<p>ARP (RFC 826) defines exactly two message types: REQUEST ("who has
+IP X? tell IP Y") and REPLY ("IP X is at MAC Z"). A request is always
+sent to the broadcast MAC address (since the sender, by definition,
+doesn't yet know who to address it to directly) — a reply is sent as a
+UNICAST directly back to the requester's MAC (learned from the request's
+own source MAC field), which is why <code>switch_sim.py</code>'s
+Scenario 1 shows the request FLOODING but the reply FORWARDING to one
+port only.</p>
+
+<h2>4. 802.1Q VLAN Tagging, the Actual Bytes</h2>
+<p>An 802.1Q tag is 4 extra bytes inserted into an Ethernet frame,
+immediately after the source MAC address and before the EtherType field:
+a 2-byte Tag Protocol Identifier (always <code>0x8100</code>, signaling
+"this frame is tagged") followed by a 2-byte Tag Control Information
+field, whose lowest 12 bits are the actual VLAN ID (allowing VLAN IDs
+0-4095, though 0 and 4095 are reserved). <code>build_frame()</code>'s
+<code>vlan_id</code> parameter constructs exactly this structure — the
+same bit-masking technique (<code>tci & 0x0FFF</code>) Module 00a's
+boolean algebra chapter covered.</p>
+
+<div class="why">
+<strong>Why does a 12-bit VLAN ID field cap you at 4096 VLANs?</strong>
+12 bits can represent exactly 2^12 = 4096 distinct values (0 through
+4095). This is a real, hard architectural limit of 802.1Q specifically —
+large enterprise/cloud environments that need MORE isolated segments than
+4096 use additional technologies layered on top (VXLAN, using a 24-bit
+identifier instead, supporting over 16 million segments) precisely to
+work around this ceiling.
+</div>
+
+<h2>5. MAC Flooding: Why Exercise 3 Matters for Real Security</h2>
+<p>A switch's CAM table has finite hardware memory. A MAC flooding attack
+deliberately sends frames from thousands (or millions) of distinct,
+often randomly-generated source MAC addresses, exhausting the CAM table's
+capacity. Once full, many real switches (historically, particularly
+older/cheaper hardware) "fail open" — reverting to flooding EVERY frame
+to EVERY port, because they can no longer learn new entries but must
+still forward traffic somehow. This transforms a switch, temporarily,
+into the equivalent of an old-style hub — meaning an attacker on any port
+can now see traffic addressed to any OTHER host on that segment, a
+direct violation of the isolation switches normally provide.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Transparent bridging / learning algorithm</td><td>Module 09's real switch/VLAN configuration in your lab</td></tr>
+<tr><td>ARP request/reply, broadcast-then-unicast pattern</td><td>Module 12's WPA2 handshake framing, Module 14's ARP-adjacent detection concepts</td></tr>
+<tr><td>802.1Q tag structure, 12-bit VLAN ID limit</td><td>Module 09's home lab VLAN plan, Module 17's cloud networking (VXLAN as the scaled-up analog)</td></tr>
+<tr><td>MAC flooding / CAM table exhaustion</td><td>Module 18's forensic reconstruction, general Layer 2 security literacy</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

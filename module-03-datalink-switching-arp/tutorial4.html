@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 03 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 03 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end, you should be able to
+trace a CAM table's exact state after any sequence of frames, decode a
+raw ARP packet field by field, explain 802.1Q tagging bit by bit, and
+articulate precisely why VLAN isolation is a switch-level FLOODING
+decision, not a firewall rule.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">What a switch actually is, versus a hub</a></li>
+<li><a href="#sec2">The CAM table — learning, flooding, forwarding, fully traced</a></li>
+<li><a href="#sec3">ARP's wire format, decoded field by field</a></li>
+<li><a href="#sec4">802.1Q VLAN tagging — every bit explained</a></li>
+<li><a href="#sec5">Broadcast domains and VLAN isolation — what it does and doesn't protect against</a></li>
+<li><a href="#sec6">Access ports vs. trunk ports</a></li>
+<li><a href="#sec7">MAC flooding / CAM table overflow — the attack this module's exercise sets up</a></li>
+<li><a href="#sec8">Full code walkthrough — switch_sim.py</a></li>
+<li><a href="#sec9">Tracing all three scenarios by hand, completely</a></li>
+<li><a href="#sec10">Troubleshooting and common confusions</a></li>
+<li><a href="#sec11">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. What A Switch Actually Is, Versus A Hub</h2>
+
+<p>An old-style HUB is a purely physical-layer device — it has no
+concept of "frames" or "addresses" at all; it simply repeats every
+electrical signal it receives out to every OTHER port, blindly. Every
+device on a hub shares ONE collision domain (Module 07's territory
+touches collisions briefly) — only one device can transmit at a time
+without interference.</p>
+
+<p>A SWITCH is fundamentally different: it actually reads each frame's
+DESTINATION MAC ADDRESS (Data Link layer — Layer 2) and makes an
+intelligent per-frame decision about which specific port(s) to forward
+it out of, rather than blindly repeating to everyone. This module's own
+<code>Switch.receive()</code> IS this decision, in its entirety —
+nothing a real switch does is conceptually more sophisticated, only
+faster (implemented in dedicated hardware — an ASIC — rather than
+software) and larger-scale (thousands of CAM entries, not four).</p>
+
+<h2 id="sec2">2. The CAM Table — Learning, Flooding, Forwarding, Fully Traced</h2>
+
+<h3>2.1 — What "CAM" stands for and why that name is precise</h3>
+<p>CAM = Content-Addressable Memory — a real hardware memory technology
+where you look something up BY ITS VALUE (a MAC address) rather than by
+a separate numeric index. This is the LITERAL hardware mechanism real
+switch ASICs use — <code>self.cam_table = {}</code> (a Python
+dictionary, keyed by <code>(vlan_id, mac_bytes)</code>) is a software
+simulation of exactly this same "look up an answer directly by the MAC
+address itself" access pattern.</p>
+
+<h3>2.2 — The decision tree, made completely explicit</h3>
+<pre>receive(in_port, frame):
+    1. LEARN: record (vlan, source_mac) -> in_port
+       (ALWAYS happens, regardless of what the destination turns out to be)
+    2. IF destination == broadcast (ff:ff:ff:ff:ff:ff):
+           FLOOD to every OTHER port on the SAME vlan
+    3. ELSE IF (vlan, destination_mac) is already in the CAM table:
+           FORWARD to that ONE specific port only
+    4. ELSE (destination is an unknown, non-broadcast MAC):
+           FLOOD to every OTHER port on the SAME vlan
+           (identical action to step 2 -- see Section 2.3 for why)</pre>
+
+<div class="why">
+<strong>Why does LEARNING happen unconditionally, on every single frame,
+regardless of what the destination turns out to be?</strong> Because the
+SOURCE address of ANY frame is genuinely useful information the switch
+didn't necessarily have before, REGARDLESS of what that particular frame's
+destination was — even a frame ultimately flooded (because its
+destination was unknown) still reveals real information about its
+SENDER's location that's worth recording for next time. This is
+precisely why <code>switch_sim.py</code>'s <code>receive()</code>
+performs the CAM table update (<code>self.cam_table[(vlan, parsed["src"])]
+= in_port</code>) BEFORE it even branches on the destination at all.
+</div>
+
+<h3>2.3 — Why unknown-unicast flooding and broadcast flooding are IDENTICAL actions</h3>
+<div class="scenario">
+<h4>Scenario: why a switch can't distinguish "forward to the one place I know it needs to go" from "I have no idea, so I'll spam everyone" without a CAM entry</h4>
+<p>A destination MAC address that ISN'T broadcast (<code>ff:ff:ff:ff:ff:ff</code>)
+is still a completely legitimate, specific, single-device address — the
+switch just doesn't YET know which port leads to it. Its only honest
+option, having no better information, is the SAME fallback broadcast
+uses: send it out every port on the relevant VLAN and let the actual
+intended recipient (whichever device that turns out to be) recognize its
+own MAC address and accept the frame, while every other device silently
+ignores it. This is EXACTLY <code>switch_sim.py</code>'s own log message
+making this identical mechanism explicit: <code>"unknown unicast ... ->
+flooding VLAN ... (like broadcast)"</code> — the code comment isn't
+approximating; it's stating a literal fact about the algorithm.</p>
+</div>
+
+<h2 id="sec3">3. ARP's Wire Format, Decoded Field By Field</h2>
+
+<p><code>build_arp()</code>'s format string —
+<code>"!HHBBH6s4s6s4s"</code> — deserves the full field-by-field
+treatment, exactly like Module 02 Section 4 did for the IPv4 header.</p>
+
+<table>
+<tr><th>Field</th><th>Size</th><th>This module's value</th><th>Meaning</th></tr>
+<tr><td>Hardware type (htype)</td><td>2 bytes (H)</td><td>1</td><td>1 means "Ethernet" — ARP is genuinely generic across different Layer 2 technologies; this field says which one is in use</td></tr>
+<tr><td>Protocol type (ptype)</td><td>2 bytes (H)</td><td>0x0800</td><td>The SAME EtherType value used for IPv4 in Module 02 — indicating this ARP packet is resolving IPv4 addresses specifically (ARP could theoretically resolve other protocol addresses too, though IPv4 is by far the overwhelming real-world usage)</td></tr>
+<tr><td>Hardware length (hlen)</td><td>1 byte (B)</td><td>6</td><td>MAC addresses are 6 bytes — this field states that explicitly, again for generality across non-Ethernet hardware types</td></tr>
+<tr><td>Protocol length (plen)</td><td>1 byte (B)</td><td>4</td><td>IPv4 addresses are 4 bytes</td></tr>
+<tr><td>Operation (op)</td><td>2 bytes (H)</td><td>1 (request) or 2 (reply)</td><td>Distinguishes a REQUEST ("who has this IP?") from a REPLY ("this IP is at this MAC") — the ONLY structural difference between a request and reply packet is this one field plus which address fields are filled in</td></tr>
+<tr><td>Sender MAC</td><td>6 bytes (6s)</td><td>the requester's/replier's own MAC</td><td>Always filled in, in BOTH request and reply</td></tr>
+<tr><td>Sender IP</td><td>4 bytes (4s)</td><td>the requester's/replier's own IP</td><td>Always filled in, in BOTH request and reply</td></tr>
+<tr><td>Target MAC</td><td>6 bytes (6s)</td><td><code>00:00:00:00:00:00</code> in a request; the real MAC in a reply</td><td>In a REQUEST, this is unknown by definition (that's the whole point of asking!) — <code>switch_sim.py</code>'s own <code>arp_request()</code> passes <code>b"\x00" * 6</code> explicitly for this reason</td></tr>
+<tr><td>Target IP</td><td>4 bytes (4s)</td><td>the IP being asked about</td><td>The one piece of information the REQUESTER already knows and is asking to resolve</td></tr>
+</table>
+
+<div class="brain">
+<strong>Brain power:</strong> why does an ARP REQUEST need to include the
+REQUESTER's own MAC and IP at all, given the request's whole purpose is
+asking about a DIFFERENT device? Because the device that eventually
+replies needs to know WHERE to send its reply — Module 01 Section 7's
+narrative made this explicit: the reply is sent as a UNICAST frame,
+addressed directly back to the original requester's MAC. Without the
+sender's own address embedded in the request, there would be no way for
+the replying device to address its response — it would have to
+broadcast the reply too, which would be wasteful and would leak that
+information to every device on the segment unnecessarily.
+</div>
+
+<h2 id="sec4">4. 802.1Q VLAN Tagging — Every Bit Explained</h2>
+
+<p><code>build_frame()</code>'s VLAN-tagging branch —
+<code>struct.pack("!HH", 0x8100, vlan_id & 0x0FFF)</code> — inserts
+exactly 4 extra bytes into an otherwise-ordinary Ethernet frame.</p>
+
+<table>
+<tr><th>Field</th><th>Size</th><th>Value/meaning</th></tr>
+<tr><td>TPID (Tag Protocol Identifier)</td><td>2 bytes</td><td>ALWAYS <code>0x8100</code> for 802.1Q — this is what tells a receiving device/switch "the next 2 bytes are a VLAN tag, and the REAL EtherType is 2 bytes further in than usual" — functioning exactly like Module 02's EtherType field, but specifically flagging "tagged frame ahead" rather than identifying the payload protocol directly</td></tr>
+<tr><td>TCI (Tag Control Information)</td><td>2 bytes, but SPLIT into sub-fields</td><td>Contains PCP (Priority Code Point, 3 bits — a QoS priority hint), DEI (Drop Eligible Indicator, 1 bit), and VID (VLAN Identifier, 12 bits) — this module's code only sets VID (<code>vlan_id & 0x0FFF</code> masks to exactly 12 bits, discarding anything beyond, which is why VLAN IDs range from 0-4095, i.e., what 12 bits can represent), leaving PCP/DEI at 0</td></tr>
+</table>
+
+<div class="scenario">
+<h4>Worked scenario: why exactly 12 bits limits VLANs to 4096 possible IDs, tying directly to Module 00a's binary math</h4>
+<pre>12 bits can represent 2^12 = 4096 distinct values (0 through 4095).
+
+vlan_id & 0x0FFF   -- masking (Module 00a's bitwise AND) against
+                      0x0FFF (binary 0000 1111 1111 1111) keeps ONLY
+                      the low 12 bits, discarding anything above that.
+
+This is EXACTLY why VLAN IDs in real networking equipment are always
+documented as ranging 1-4094 (0 and 4095 are reserved for special
+purposes, not available for ordinary use) -- the 12-bit field is the
+HARD mathematical ceiling, not an arbitrary vendor choice.</pre>
+</div>
+
+<div class="why">
+<strong>Why does the parser (<code>parse_frame()</code>) need to check
+for <code>ethertype == 0x8100</code> and handle two DIFFERENT possible
+offsets for where the real EtherType lives?</strong> Because a VLAN tag
+is OPTIONAL, inserted only when needed — a receiving device (or, in this
+simulation, the parsing function) cannot know IN ADVANCE whether a given
+frame is tagged or not; it must READ the first 2 bytes after the MAC
+addresses and check whether they equal the reserved TPID value
+(<code>0x8100</code>) to determine whether 4 extra tag bytes are
+present before the REAL EtherType, or whether the real EtherType starts
+immediately. This is a genuinely common protocol design pattern —
+a SELF-DESCRIBING variable-length structure, where an early field's
+value determines how to interpret what follows — the same category of
+mechanism as Module 18's libpcap magic number determining byte order.
+</div>
+
+<h2 id="sec5">5. Broadcast Domains and VLAN Isolation — What It Does And Doesn't Protect Against</h2>
+
+<div class="scenario">
+<h4>Scenario 2, re-examined: why PC-A's ARP for PC-C never gets a reply, mechanically</h4>
+<p>PC-A (VLAN 10, port 1) broadcasts an ARP request. The switch's
+<code>_flood()</code> method iterates over <code>self.port_vlan</code>
+and delivers ONLY to ports where <code>port_vlan == vlan</code> — since
+PC-A's frame is tagged/associated with VLAN 10, only OTHER VLAN 10 ports
+(here, just port 2, PC-B) ever receive it. PC-C, physically connected to
+the SAME switch, on port 3 (VLAN 20), never receives the broadcast AT
+ALL — not "receives it and ignores it," but never gets the electrical
+signal/frame delivered to its port in the first place. PC-C has no
+opportunity to reply because it never even saw the question.</p>
+</div>
+
+<div class="pitfall">
+<strong>Common misconception: "VLAN isolation is a firewall rule that
+blocks certain traffic."</strong> This significantly understates and
+mischaracterizes what's actually happening. A firewall rule (Module 10's
+territory) makes an explicit ALLOW/DENY decision on traffic it can see
+and evaluate. VLAN isolation, at the level this module demonstrates, is
+much more fundamental: the switch never even ATTEMPTS delivery across
+VLAN boundaries during flooding — there's no rule being "checked and
+denied"; the destination ports simply aren't in the flood's target set
+at all. This matters for a precise exam answer: VLAN separation is a
+BROADCAST DOMAIN boundary (a Layer 2 structural fact), not an access
+control decision (a Layer 3/4 policy fact) — though the PRACTICAL
+effect (isolated communication) can look similar from a high level.
+</div>
+
+<div class="why">
+<strong>Why is "VLAN isolation" alone NOT equivalent to real security
+segmentation, despite what this scenario demonstrates?</strong> Because
+VLAN separation, by itself, only prevents ACCIDENTAL/CASUAL crossing —
+a real attacker with the right access (e.g., a compromised device that
+can send raw, crafted 802.1Q-tagged frames, or certain switch
+misconfigurations) can potentially perform "VLAN hopping" attacks that
+defeat naive VLAN-based isolation. This is exactly why Module 09's real
+segmentation guidance and Module 10's firewall rules layer ADDITIONAL,
+independent protections (a real routed boundary with explicit
+firewall rules between VLANs, not just relying on switch-level
+flooding behavior alone) — VLANs are a useful, legitimate FIRST layer,
+not a complete security boundary on their own.
+</div>
+
+<h2 id="sec6">6. Access Ports vs. Trunk Ports</h2>
+
+<p>Every host in this module's simulation connects via what real
+networking calls an ACCESS PORT — a port assigned to exactly ONE VLAN
+(<code>self.port_vlan</code> maps each port number to a single VLAN ID),
+carrying UNTAGGED frames (the end device itself has no awareness of
+VLAN tagging at all — <code>Host.arp_request()</code> doesn't set a
+<code>vlan_id</code> when talking to another host on its own segment).</p>
+
+<p>A TRUNK PORT (Exercise 2's territory) is different: it carries
+MULTIPLE VLANs simultaneously over ONE physical link, using explicit
+802.1Q TAGS (Section 4) on every frame specifically so the receiving
+switch (or another trunk-connected device) knows which VLAN each frame
+belongs to, despite sharing one physical wire.</p>
+
+<div class="why">
+<strong>Why do real networks need trunk ports at all, rather than just
+running a separate physical cable per VLAN between switches?</strong>
+A building with, say, 10 VLANs would need 10 separate physical
+connections between every pair of switches that need to exchange traffic
+from all of them — a genuinely impractical cabling requirement at any
+real scale. A SINGLE trunk link, carrying all 10 VLANs simultaneously
+via tagging, solves this with one physical cable — this is precisely
+the ECONOMIC/practical motivation behind 802.1Q's entire existence: let
+one physical link logically carry many separate broadcast domains,
+distinguished purely by a tag in each frame, rather than requiring
+physical separation.
+</div>
+
+<h2 id="sec7">7. MAC Flooding / CAM Table Overflow — The Attack This Module's Exercise Sets Up</h2>
+
+<p>Exercise 3 asks you to observe a CAM table's UNBOUNDED growth when
+flooded with frames from thousands of fake, randomly-generated source
+MAC addresses. This isn't just a stress test — it models a REAL, named
+attack class.</p>
+
+<div class="scenario">
+<h4>Scenario: how MAC flooding actually defeats a switch's security properties</h4>
+<p>Real switch hardware has a FINITE CAM table capacity (thousands to
+tens of thousands of entries, not unlimited). An attacker who floods a
+switch with frames from a huge number of FAKE, never-reused source MAC
+addresses forces the CAM table to fill completely — every entry gets
+used up on fake addresses. Once genuinely full, many real switches
+(historically, especially older/cheaper hardware) respond by "FAILING
+OPEN": when the CAM table can't accept new legitimate entries, the
+switch falls back to FLOODING EVERYTHING to EVERY port, essentially
+behaving like a hub — because it can no longer make an intelligent
+forwarding decision. An attacker on ANY port can now passively observe
+traffic that would normally have been forwarded only to its legitimate
+destination port — a real, practical eavesdropping technique that
+exploits the exact learning/flooding mechanism this module teaches, used
+maliciously against its own overflow condition.</p>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does MAC flooding work
+as an eavesdropping technique specifically, rather than as a
+denial-of-service technique?" A precise answer distinguishes the
+attacker's actual GOAL: a MAC flooding attack's payoff isn't stopping
+traffic (a DoS goal) — it's forcing the switch into its FLOODING
+fallback behavior specifically so traffic the attacker normally couldn't
+see (destined for OTHER ports) gets broadcast to the attacker's own port
+too. The switch keeps functioning (traffic still gets delivered, just
+inefficiently, to everyone) — the attack's value is entirely in the
+CONFIDENTIALITY breach this fallback flooding creates, not in
+disrupting availability.
+</div>
+
+<h2 id="sec8">8. Full Code Walkthrough — switch_sim.py</h2>
+
+<h3>8.1 — Why VLAN is determined by EITHER the frame's own tag OR the port's default</h3>
+<pre>vlan = parsed["vlan_id"] if parsed["vlan_id"] is not None else self.port_vlan[in_port]</pre>
+<p>This single line models BOTH access-port and trunk-port behavior
+(Section 6) in one expression: if the incoming frame carries its OWN
+explicit VLAN tag (<code>parsed["vlan_id"] is not None</code> — meaning
+it arrived via a trunk-style tagged path), USE that tag directly. If the
+frame arrived UNTAGGED (as every host in this simulation's own access
+ports sends), fall back to whatever VLAN the PORT ITSELF is configured
+for (<code>self.port_vlan[in_port]</code>) — exactly how a real access
+port implicitly assigns untagged traffic to its own configured VLAN
+without the end device needing any VLAN awareness at all.</p>
+
+<h3>8.2 — Why dump_cam_table() iterates a dict and formats each entry</h3>
+<pre>for (vlan, mac), port in self.cam_table.items():
+    print(f"    VLAN {vlan:<3} {mac_str(mac)} -> port {port}")</pre>
+<p>The CAM table's KEY is a TUPLE, <code>(vlan_id, mac_bytes)</code> —
+not just the MAC alone. This is a deliberate, important design choice:
+the SAME MAC address could theoretically appear on DIFFERENT VLANs in
+more complex real topologies (or, more commonly, this structure simply
+guarantees CAM entries are correctly scoped per-VLAN, matching how real
+switch hardware maintains per-VLAN forwarding tables, since a MAC's
+correct outgoing port can genuinely depend on which VLAN's flooding/
+forwarding domain is being evaluated).</p>
+
+<h2 id="sec9">9. Tracing All Three Scenarios By Hand, Completely</h2>
+
+<div class="scenario">
+<h4>Scenario 1, traced completely: PC-A ARPs for PC-B</h4>
+<pre>1. PC-A calls arp_request("192.0.2.12") -- builds an ARP request payload,
+   wraps it in a frame with dst=BROADCAST, src=PC-A's MAC, sends to switch
+   on port 1.
+
+2. Switch.receive(in_port=1, frame):
+   - parsed.src = PC-A's MAC, parsed.dst = BROADCAST
+   - vlan = port_vlan[1] = 10 (untagged frame, falls back to port default)
+   - LEARN: cam_table[(10, PC-A's MAC)] = 1  (new entry -- printed)
+   - dst == BROADCAST -> _flood(in_port=1, vlan=10, frame)
+     -> delivers to every port WHERE port != 1 AND port_vlan == 10
+     -> that's ONLY port 2 (PC-B) -- ports 3,4 are VLAN 20, skipped entirely
+
+3. PC-B.receive(frame): dst is BROADCAST (matches), ethertype is ARP
+   -> _handle_arp(): op==REQUEST, target_ip matches PC-B's own IP
+   -> PC-B builds a REPLY, addressed directly to PC-A's MAC (unicast,
+      not broadcast this time), sends back through the switch on port 2
+
+4. Switch.receive(in_port=2, frame): dst = PC-A's MAC (NOT broadcast)
+   - LEARN: cam_table[(10, PC-B's MAC)] = 2  (new entry -- printed)
+   - key = (10, PC-A's MAC) -- IS this in cam_table? YES (learned in step 2)
+   - FORWARD to port 1 ONLY (not a flood this time)
+
+5. PC-A.receive(reply): op==REPLY -> caches 192.0.2.12 -> PC-B's MAC
+
+Final CAM table: {(10, PC-A_MAC): 1, (10, PC-B_MAC): 2}
+Final PC-A ARP cache: {"192.0.2.12": PC-B_MAC}</pre>
+<p>Every line of this trace corresponds EXACTLY to a specific print
+statement in <code>switch_sim.py</code>'s real, tested output — if you
+run <code>python switch_sim.py</code> yourself, this is precisely what
+you'll see, in this order.</p>
+</div>
+
+<h2 id="sec10">10. Troubleshooting and Common Confusions</h2>
+
+<div class="scenario">
+<h4>Confusion: "Step 3's real-world ARP test shows my gateway with 'incomplete' status even before I clear the cache — is something broken?"</h4>
+<p>Not necessarily — "incomplete" (Linux terminology; Windows/macOS show
+this differently) specifically means an ARP REQUEST was sent but no
+reply has been received YET, a genuinely normal transient state during
+active resolution, not a persistent error. If it stays incomplete after
+several seconds and retries, THAT would indicate a real problem (the
+gateway not responding at all) — but a brief incomplete state during the
+resolution process itself is expected and matches exactly what Section
+9's trace shows happening between steps 2 and 3, before the reply
+arrives.</p>
+</div>
+
+<div class="pitfall">
+<strong>Common mistake: assuming Scenario 3's "known unicast" forwarding
+means the switch is now somehow FASTER or fundamentally different in
+behavior than the flooding case.</strong> The MECHANISM (a per-frame
+forwarding decision) is IDENTICAL in both cases — the only difference is
+which CODE PATH executes, based purely on whether the destination
+happens to already be in the CAM table. A switch doesn't "switch modes"
+between a learning phase and an operating phase — every single frame,
+forever, triggers the exact same learn-then-decide sequence; it just so
+happens that MORE destinations become "known" (in the CAM table) over
+time as more traffic flows, naturally reducing how often flooding is
+needed, without any explicit phase transition.
+</div>
+
+<h2 id="sec11">11. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 04, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>State the switch's complete decision algorithm (learn, then
+broadcast/known-unicast/unknown-unicast branching) without looking at
+the code.</li>
+<li>Decode a raw ARP packet's fields, explaining why the target MAC is
+all-zeros in a request specifically.</li>
+<li>Explain 802.1Q's TPID/TCI structure and compute the maximum number
+of VLAN IDs from the VID field's bit width.</li>
+<li>Explain, precisely, why VLAN isolation is a flooding-domain
+structural fact rather than an access-control policy decision — and why
+that distinction matters for real security posture.</li>
+<li>Distinguish access ports from trunk ports and explain the practical
+motivation for trunk ports existing at all.</li>
+<li>Explain how MAC flooding exploits CAM table capacity limits to turn
+a switch into an eavesdropping vector.</li>
+<li>Trace, by hand, the complete CAM table and ARP cache state after any
+sequence of frames you're given.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 04 moves to IP addressing and subnetting, building
+directly on top of "a broadcast domain" as a concept you should now
+understand mechanically, not just as a term.</p>
+
+</body>
+</html>
