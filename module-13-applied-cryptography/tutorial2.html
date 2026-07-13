@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 13 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 13 — Deep Theory: TLS 1.3, Certificate Chains, Command by Command</h1>
+
+<h2>1. Decoding <code>TLS_AES_256_GCM_SHA384</code>, Piece by Piece</h2>
+<p>Every part of a TLS 1.3 cipher suite name specifies one concrete
+algorithm:</p>
+<table>
+<tr><th>Component</th><th>Meaning</th></tr>
+<tr><td><code>AES_256</code></td><td>The SYMMETRIC cipher used to encrypt the actual application data, with a 256-bit key — this is the "cheap, fast, bulk encryption" primitive Module 00a's headfirst.md previewed</td></tr>
+<tr><td><code>GCM</code></td><td>Galois/Counter Mode — the specific MODE OF OPERATION AES runs in, providing both encryption AND built-in authentication (detecting tampering) in one combined operation, called an AEAD (Authenticated Encryption with Associated Data) cipher</td></tr>
+<tr><td><code>SHA384</code></td><td>The hash function used for the handshake's own integrity/key-derivation purposes (HKDF, TLS 1.3's key derivation function, uses this internally) — NOT the same as an HMAC key or the certificate's own signature algorithm</td></tr>
+</table>
+<div class="why">
+<strong>Notice what's MISSING from TLS 1.3's cipher suite name compared to
+TLS 1.2's:</strong> TLS 1.2 suite names also specified the KEY EXCHANGE
+algorithm (e.g. <code>TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384</code>). TLS
+1.3 removed this from the suite name because TLS 1.3 MANDATES (EC)DHE
+key exchange for every connection — there's no longer a choice to
+specify, since TLS 1.3 deliberately removed the older, weaker
+non-forward-secret key exchange options TLS 1.2 still allowed. This is a
+real, deliberate security hardening: TLS 1.3 structurally cannot
+negotiate a connection lacking forward secrecy, unlike TLS 1.2.
+</div>
+
+<h2>2. The TLS 1.3 Handshake, Message by Message</h2>
+<p>What actually happens when <code>tls_client.py</code> connects,
+underneath the single <code>wrap_socket()</code> call:</p>
+<pre>Client -> Server: ClientHello (supported cipher suites, a DH key share, SNI)
+Server -> Client: ServerHello (chosen cipher suite, server's own DH key share)
+                    [Server now derives handshake keys -- rest of server's
+                     messages are already encrypted, unlike TLS 1.2]
+Server -> Client: EncryptedExtensions, Certificate, CertificateVerify, Finished
+Client:            verifies certificate chain (toy_ca.py's verify_chain() logic,
+                    performed automatically by the TLS library)
+Client -> Server: Finished
+                    [Application data now flows, encrypted with derived session keys]</pre>
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "TLS 1.3 reduced the
+handshake to effectively '1 round trip' compared to TLS 1.2's 2. What
+specifically changed to make this possible?" TLS 1.2 required a separate
+round trip to first AGREE on parameters (cipher suite, key exchange
+method) before actually performing the key exchange. TLS 1.3 has the
+CLIENT proactively GUESS which key exchange group the server will accept
+and send its own key share immediately in the ClientHello (rather than
+waiting to be told what to send) — if the guess is right (usually is, for
+well-supported groups), the server can respond with everything needed to
+complete the handshake in one reply, collapsing what took 2 round trips
+into effectively 1. (If the client guesses wrong, an extra round trip —
+HelloRetryRequest — is still needed, an edge case worth knowing exists.)
+</div>
+
+<h2>3. Certificate Chain Validation, the Full Algorithm</h2>
+<p><code>toy_ca.py</code>'s <code>verify_chain()</code> checks ONE
+signature (leaf signed by root). A real browser's validation, for a
+typical 3-certificate chain (leaf → intermediate → root), performs
+SEVERAL checks, all of which must pass:</p>
+<ol>
+<li><strong>Signature chain:</strong> leaf's signature verifies against
+intermediate's public key; intermediate's signature verifies against
+root's public key (exactly this module's check, chained one level deeper)</li>
+<li><strong>Root trust:</strong> the ROOT certificate must already be
+present in the verifier's trusted root store (the ~100-150 CAs your OS/browser
+ships with) — nothing "verifies" the root itself; it's trusted by
+inclusion in this store, which is why Module 13's toy CA correctly fails
+verification everywhere except this course's own explicit
+<code>cafile=ca_cert.pem</code> trust</li>
+<li><strong>Validity period:</strong> the current date must fall within
+EVERY certificate's own <code>not_valid_before</code>/<code>not_valid_after</code>
+window in the chain</li>
+<li><strong>Revocation status:</strong> none of the certificates in the
+chain have been REVOKED before their natural expiration (checked via CRL
+or OCSP — exactly the check that produced this module's real
+schannel/curl finding)</li>
+<li><strong>Name matching:</strong> the leaf certificate's Subject
+Alternative Name (or, historically, Subject Common Name) must match the
+hostname the client actually connected to</li>
+</ol>
+
+<h2>4. CRL vs. OCSP: Two Approaches to Revocation Checking</h2>
+<p>A CRL (Certificate Revocation List) is a periodically-published,
+downloadable LIST of every revoked certificate's serial number from a
+given CA — a client downloads the whole list and checks locally. OCSP
+(Online Certificate Status Protocol) instead lets a client ask, in
+REAL TIME, "is THIS ONE specific certificate revoked?" without
+downloading an entire list. OCSP is more bandwidth-efficient and
+provides fresher information, but requires a live query to the CA's OCSP
+responder for every connection (a real privacy concern — the CA learns
+which sites you're visiting — and a real availability concern if the
+responder is slow or down, which is why "OCSP stapling," where the SERVER
+itself periodically fetches and attaches its own OCSP response to the
+handshake, exists as a hybrid improvement).</p>
+
+<h2>5. Certificate Pinning and mTLS, Briefly</h2>
+<p><strong>Certificate pinning:</strong> a client HARD-CODES which
+specific certificate (or public key) it will accept for a given host,
+rather than trusting ANY certificate that chains to a trusted root. This
+defends against a compromised or coerced CA issuing a fraudulent-but-technically-valid
+certificate for your domain — at the cost of operational fragility
+(rotating your own certificate now requires updating every pinned
+client too). <strong>mTLS (mutual TLS):</strong> this module's handshake
+only authenticated the SERVER (the client verified the server's
+certificate; the server never verified the client's identity). mTLS adds
+a CLIENT certificate too, with the server performing the same
+chain-verification logic against the client's cert — commonly used for
+service-to-service authentication in internal infrastructure, where both
+parties need cryptographic proof of the other's identity, not just one
+direction.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Cipher suite decomposition (AEAD, symmetric+hash)</td><td>General applied-crypto literacy for any TLS-adjacent security review</td></tr>
+<tr><td>TLS 1.3's 1-RTT handshake mechanics</td><td>Performance-security tradeoff literacy for Tier 6 web security topics</td></tr>
+<tr><td>Full chain validation (5 checks, not just signature)</td><td>Module 16's vulnerability assessment (misconfigured TLS as a real finding category)</td></tr>
+<tr><td>CRL vs OCSP vs OCSP stapling</td><td>Direct explanation of this module's own real schannel/curl finding</td></tr>
+<tr><td>Certificate pinning, mTLS</td><td>Module 17's service-to-service cloud authentication patterns</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
