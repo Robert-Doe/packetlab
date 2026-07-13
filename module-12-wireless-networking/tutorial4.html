@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 12 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 12 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+explain PBKDF2's key-stretching purpose precisely, narrate the 4-way
+handshake message by message with exact reasoning for each nonce
+exchange, and explain why the SSID functioning as a cryptographic salt
+has real, practical consequences for password cracking speed.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">PBKDF2 — key stretching, precisely explained</a></li>
+<li><a href="#sec2">Why the SSID is the salt — real consequences</a></li>
+<li><a href="#sec3">The 4-way handshake, narrated message by message</a></li>
+<li><a href="#sec4">The PRF and PTK expansion, traced completely</a></li>
+<li><a href="#sec5">Why MAC/nonce ordering (min/max) matters</a></li>
+<li><a href="#sec6">The beacon frame — Frame Control field, decoded</a></li>
+<li><a href="#sec7">WPA2 vs. WPA3 — what SAE actually fixes</a></li>
+<li><a href="#sec8">Full code walkthrough — derive_ptk() and the PTK's sub-keys</a></li>
+<li><a href="#sec9">Many worked scenarios</a></li>
+<li><a href="#sec10">Troubleshooting and common confusions</a></li>
+<li><a href="#sec11">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. PBKDF2 — Key Stretching, Precisely Explained</h2>
+
+<p><code>derive_pmk()</code>'s <code>hashlib.pbkdf2_hmac("sha1",
+passphrase.encode(), ssid.encode(), 4096, dklen=32)</code> performs KEY
+STRETCHING — deliberately, artificially SLOWING DOWN the process of
+turning a human-memorable passphrase into a cryptographic key, and
+understanding WHY this slowness is a deliberate FEATURE, not a
+performance bug, is the entire point of this section.</p>
+
+<div class="scenario">
+<h4>Why 4096 iterations specifically matters for attack speed</h4>
+<p>A human-chosen Wi-Fi passphrase has WAY less entropy (genuine
+randomness/unpredictability) than a proper 256-bit cryptographic key —
+people choose memorable words, patterns, dates. An attacker attempting
+to GUESS your passphrase (an offline dictionary/brute-force attack,
+Module 16's authorized-lab territory) needs to compute the SAME PBKDF2
+derivation for EVERY candidate passphrase they try. Each derivation
+requires 4096 SEPARATE HMAC-SHA1 computations (per this module's own
+code) — NOT one. This means testing one million candidate passphrases
+requires 4096 MILLION individual hash computations, not one million —
+a genuinely real, roughly 4096x SLOWDOWN for the attacker, compared to
+what a single, un-stretched hash would allow.</p>
+</div>
+
+<div class="why">
+<strong>Why not just use a single SHA1 hash directly, without the 4096x
+repetition?</strong> A single hash computation is EXTREMELY fast on
+modern hardware (billions of hashes per second are achievable with
+specialized attack hardware for simple, unstretched hashes) — meaning
+an attacker could test an enormous number of candidate passphrases per
+second against an unstretched hash. Key stretching deliberately trades
+LEGITIMATE computation cost (a real device deriving its OWN PMK once,
+when you type your password, pays this cost exactly ONCE and then
+reuses the result — this module's own code comments this directly:
+"changing your Wi-Fi password forces every device to redo this expensive
+derivation") against ATTACKER computation cost (who must pay this SAME
+4096x cost for EVERY SINGLE candidate they test) — a real, meaningful
+asymmetry that specifically favors the legitimate, infrequent use case
+over the attacker's need to test many candidates rapidly.
+</div>
+
+<div class="pitfall">
+<strong>Why 4096 iterations is considered LOW by modern password-hashing
+standards (this module's own Exercise 3 sets this up directly):</strong>
+4096 was a reasonable cost when WPA2/802.11i was standardized (2004),
+but modern password-hashing best practice (for other contexts — bcrypt,
+Argon2, or PBKDF2 itself with modern parameter recommendations) commonly
+uses ITERATION COUNTS ORDERS OF MAGNITUDE HIGHER — because attacker
+hardware has gotten dramatically faster since 2004, while WPA2's
+iteration count is FIXED by the specification and cannot be
+independently increased by an access point administrator. This is a
+real, documented, unfixable-without-a-protocol-change weakness in WPA2's
+own design — directly connecting to why WPA3 (Section 7) uses an
+entirely different key-establishment mechanism instead of trying to
+patch PBKDF2's iteration count.
+</div>
+
+<h2 id="sec2">2. Why The SSID Is The Salt — Real Consequences</h2>
+
+<p>A cryptographic SALT is extra, non-secret data mixed into a hash
+computation SPECIFICALLY to defeat precomputed lookup tables (rainbow
+tables) — WPA2 uses the network's own SSID (its broadcast name) as this
+salt.</p>
+
+<div class="scenario">
+<h4>Precisely why using the SSID as salt matters for real attack economics</h4>
+<pre>Without a salt (hypothetically): an attacker could precompute a table
+of PMKs for every common passphrase ONCE, and reuse that SAME table to
+attack ANY WPA2 network using any of those passphrases -- a devastating,
+massively reusable precomputation.
+
+WITH the SSID as salt: the SAME passphrase ("password123") produces a
+COMPLETELY DIFFERENT PMK against SSID "HomeNetwork" than against SSID
+"CoffeeShopWiFi" -- a precomputed table for one SSID is USELESS against
+a network with a different SSID. An attacker targeting a SPECIFIC
+network must compute (or look up a table specifically precomputed for)
+THAT network's exact SSID -- eliminating the massive reusability
+advantage a SSID-independent precomputed table would otherwise provide.</pre>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does changing your
+Wi-Fi network's SSID (name) alone, without changing the passphrase,
+still meaningfully change your network's security posture against
+precomputed attacks?" Because the SSID functions as the cryptographic
+SALT in the PMK derivation — even with the IDENTICAL passphrase, a
+different SSID produces a COMPLETELY DIFFERENT PMK. This means any
+precomputed table an attacker built for common passphrases against
+COMMON, DEFAULT SSIDs (a real, documented attack practice — precomputed
+"rainbow tables" exist specifically for common default router SSIDs
+like "linksys" or "NETGEAR") becomes USELESS the moment you rename your
+network to something non-default, even without touching the passphrase
+at all — a genuinely underappreciated, real security benefit of simply
+avoiding a common default SSID.
+</div>
+
+<h2 id="sec3">3. The 4-Way Handshake, Narrated Message By Message</h2>
+
+<p>This module's own <code>wpa_handshake_sim.py</code> models the REAL
+IEEE 802.11i 4-way handshake — narrate it completely, message by
+message, with precise reasoning for why each step exists.</p>
+
+<div class="scenario">
+<h4>The complete, precisely-reasoned narration</h4>
+<ol>
+<li><strong>Message 1 (AP → STA): AP sends its ANonce (a fresh, random
+number, generated new for THIS specific handshake).</strong> This is the
+AP's contribution of FRESHNESS to the exchange — without it, both sides
+would derive the SAME PTK every single time they connect (since the PMK
+itself, per Section 1, is derived once and REUSED across many
+connections), which would mean an attacker who somehow recorded ONE past
+session's traffic could decrypt ALL future sessions too. A fresh, random
+ANonce for every handshake ensures every SESSION gets a genuinely
+DIFFERENT PTK, even though the underlying PMK never changes.</li>
+<li><strong>Message 2 (STA → AP): STA sends its OWN fresh SNonce, plus a
+MIC (Message Integrity Code) proving it already correctly computed a
+PTK using the AP's ANonce.</strong> At this point, the STA has ALREADY
+computed the full PTK (it has its own SNonce, the AP's ANonce from
+message 1, and both MAC addresses — everything <code>derive_ptk()</code>'s
+signature requires) — sending a MIC computed WITH that PTK proves to the
+AP "I correctly derived the same key you're about to derive," WITHOUT
+ever transmitting the PTK (or the PMK) itself.</li>
+<li><strong>Message 3 (AP → STA): AP, now also having the STA's SNonce,
+computes its OWN copy of the PTK independently, verifies the STA's MIC
+from message 2, and sends its own MIC plus the group key (GTK, used for
+broadcast/multicast traffic — genuinely out of this module's core
+simulated scope, but worth knowing it's delivered here).</strong></li>
+<li><strong>Message 4 (STA → AP): a final acknowledgment confirming
+installation of the keys is complete on both sides.</strong> Only after
+this final message do BOTH sides begin actually encrypting real data
+traffic with the newly-derived PTK.</li>
+</ol>
+</div>
+
+<div class="why">
+<strong>Why does this module's own <code>derive_ptk()</code> confirm BOTH
+sides reach a BYTE-IDENTICAL PTK despite the PMK, PTK, AND both nonces
+NEVER being fully, directly transmitted together in one place?</strong>
+Each side independently possesses all FOUR required ingredients by the
+end of message 2 (their OWN PMK — pre-shared, never transmitted at all;
+their OWN nonce; the OTHER side's nonce, received via messages 1-2; both
+MAC addresses, always visible in ordinary 802.11 frame headers) — and
+because the PRF (Section 4) is a DETERMINISTIC function, feeding it the
+EXACT SAME four ingredients on both sides MATHEMATICALLY GUARANTEES an
+identical output, without either side ever needing to transmit the
+final key material itself. This is conceptually the SAME "each side
+independently combines shared and private information to reach an
+identical result" structure as Module 00a's Diffie-Hellman story and
+Module 11's WireGuard key exchange — a recurring pattern across this
+entire course's cryptography material.
+</div>
+
+<h2 id="sec4">4. The PRF And PTK Expansion, Traced Completely</h2>
+
+<pre>def prf(key, label, data, length_bytes):
+    result = b""
+    counter = 0
+    while len(result) < length_bytes:
+        result += hmac_module.new(key, label + b"\x00" + data + bytes([counter]), hashlib.sha1).digest()
+        counter += 1
+    return result[:length_bytes]</pre>
+
+<div class="scenario">
+<h4>Why the PRF needs a COUNTER loop at all — the core problem it solves</h4>
+<p>HMAC-SHA1 (the underlying primitive) always produces EXACTLY 20 bytes
+(160 bits) of output, no matter what. But a PTK for CCMP/AES needs 48
+bytes (384 bits, per this module's own <code>derive_ptk()</code> call:
+<code>prf(pmk, b"Pairwise key expansion", data, 48)</code>) — MORE
+output than a single HMAC-SHA1 call can directly produce. The counter
+loop solves this by calling HMAC-SHA1 MULTIPLE TIMES, each time with a
+slightly different input (the SAME key/label/data, but a different
+trailing COUNTER byte: 0, then 1, then 2...), concatenating each 20-byte
+output together until there's enough material, then truncating to
+EXACTLY the needed length (<code>result[:length_bytes]</code>). This is
+a real, standard cryptographic technique (sometimes called a "counter
+mode KDF" or similar) for expanding a fixed-size hash output into
+arbitrary-length key material.</p>
+</div>
+
+<div class="why">
+<strong>Why does the label ("Pairwise key expansion") get mixed into
+every single PRF call, alongside the actual key material?</strong> The
+LABEL acts as DOMAIN SEPARATION — ensuring this SPECIFIC use of the PRF
+(deriving a PAIRWISE key) produces output that's cryptographically
+UNRELATED to any OTHER use of the same underlying PMK with a DIFFERENT
+label (802.11i defines other PRF uses with different labels for other
+purposes). Even though the underlying key (PMK) and much of the input
+data might otherwise be similar or identical across different derivation
+purposes, including a distinct label ensures each derived output is
+independent and serves only its own specific, labeled purpose — a real,
+general cryptographic design principle worth recognizing whenever you
+see a fixed "context string" mixed into a key-derivation function.
+</div>
+
+<h2 id="sec5">5. Why MAC/Nonce Ordering (min/max) Matters</h2>
+
+<pre>mac_min, mac_max = (aa, spa) if aa < spa else (spa, aa)
+nonce_min, nonce_max = (anonce, snonce) if anonce < snonce else (snonce, anonce)
+data = mac_min + mac_max + nonce_min + nonce_max</pre>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why must both the AP and
+STA sort their MAC addresses and nonces into a CONSISTENT (min, max)
+order before combining them into the PRF's input data, rather than each
+side simply using 'my own value first, then the peer's'?" If the AP
+computed its input as (AP's own MAC, STA's MAC, AP's nonce, STA's nonce)
+while the STA computed its input as (STA's own MAC, AP's MAC, STA's
+nonce, AP's nonce) — i.e., each side naively ordering "mine first" — the
+two sides would be feeding DIFFERENT byte sequences into an otherwise
+identical PRF computation, producing COMPLETELY DIFFERENT (and
+mismatched) PTKs, since even a single byte's difference in position
+completely changes a cryptographic hash's output. Explicitly sorting
+BOTH values into a canonical, ORDER-INDEPENDENT arrangement (whichever
+value is numerically smaller goes first, REGARDLESS of which side is
+computing it) guarantees BOTH the AP and STA construct the EXACT SAME
+input bytes, in the exact same order, regardless of which side is doing
+the computing — a genuinely necessary technique any time two independent
+parties need to deterministically combine values in a way that produces
+an identical result regardless of which side goes "first" locally.
+</div>
+
+<h2 id="sec6">6. The Beacon Frame — Frame Control Field, Decoded</h2>
+
+<div class="scenario">
+<h4>Worked scenario: decoding a beacon frame's Frame Control field</h4>
+<p>Every 802.11 frame begins with a 2-byte Frame Control field
+containing (among other sub-fields) a TYPE (2 bits: 00=Management,
+01=Control, 10=Data) and a SUBTYPE (4 bits, meaning depends on the
+type). A Beacon frame is TYPE=00 (Management — frames used for network
+"housekeeping": announcing presence, associating clients, authenticating
+— NOT carrying actual user data), SUBTYPE=1000 (decimal 8, specifically
+meaning "Beacon" among the possible Management subtypes). This module's
+own <code>wifi_frame_builder.py</code> constructs and then correctly
+PARSES this exact field, confirming type=Management and subtype=Beacon
+match — the same "build it, then independently verify by parsing it
+back" discipline this entire course applies throughout (Module 02's
+<code>layer_builder.py</code>, Module 18's pcap writer/reader pair).</p>
+</div>
+
+<div class="why">
+<strong>Why does a beacon frame broadcast the SSID in PLAINTEXT, even on
+a password-protected (WPA2) network?</strong> The SSID is NOT secret
+information WPA2 is designed to protect — WPA2's entire security model
+protects the DATA traffic exchanged AFTER a successful handshake
+(Section 3), not the network's own advertised existence and name. This
+is precisely why "hidden SSID" (suppressing the SSID from beacon frames)
+provides only extremely weak, easily-defeated obscurity rather than real
+security — this module's own Exercise 2 (building a Probe Request frame
+instead) demonstrates exactly WHY: a device actively probing for a
+"hidden" network (or simply a legitimate device reconnecting) still
+broadcasts the SSID in ITS OWN Probe Request frames, leaking the exact
+name a beacon-based hiding attempt was trying to suppress.
+</div>
+
+<h2 id="sec7">7. WPA2 vs. WPA3 — What SAE Actually Fixes</h2>
+
+<table>
+<tr><th>Property</th><th>WPA2-Personal (this module's own implementation)</th><th>WPA3-Personal (SAE)</th></tr>
+<tr><td>Key establishment</td><td>PSK derived directly from the passphrase (Section 1) — the SAME derivable value every time, for a given SSID+passphrase pair</td><td>SAE (Simultaneous Authentication of Equals) — a genuine Diffie-Hellman-STYLE exchange (conceptually closer to Module 00a/Module 11's key-exchange material) where the passphrase authenticates the exchange rather than DIRECTLY deriving the key</td></tr>
+<tr><td>Offline dictionary attack resistance</td><td>Vulnerable — an attacker who captures a 4-way handshake can attempt OFFLINE guessing (trying candidate passphrases against captured data with no further network interaction needed) at whatever speed their own hardware allows, limited only by the 4096-iteration PBKDF2 cost (Section 1's own documented weakness)</td><td>SAE is specifically designed to resist offline attacks — each guess requires ACTIVE INTERACTION with the real access point, meaning an attacker cannot simply capture one exchange and then guess offline at their own hardware's speed; the AP itself can rate-limit or detect repeated failed attempts</td></tr>
+<tr><td>Forward secrecy</td><td>Weaker — if the PSK/passphrase is ever compromised, PAST captured sessions can potentially be decrypted (since the PMK, though not directly transmitted, is directly derivable from the known passphrase)</td><td>Stronger — SAE's Diffie-Hellman-style exchange provides genuine forward secrecy properties more comparable to Module 11's WireGuard design</td></tr>
+</table>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Precisely explain why
+WPA3's SAE handshake resists offline dictionary attacks in a way WPA2's
+PSK-based handshake fundamentally cannot, regardless of iteration
+count." WPA2's core vulnerability isn't specifically "4096 is too few
+iterations" — it's structural: the PMK is DETERMINISTICALLY derivable
+from just the passphrase and SSID ALONE (Section 1), meaning once an
+attacker has captured a single 4-way handshake, EVERY SUBSEQUENT
+guessing attempt requires NO further interaction with the real network
+at all — pure OFFLINE computation, limited only by the attacker's own
+hardware speed. SAE's design fundamentally changes this: correctly
+completing the exchange requires genuine, ACTIVE, real-time interaction
+with the legitimate access point for EACH ATTEMPT — an attacker cannot
+simply capture data once and then compute candidate guesses in
+isolation afterward. This is a STRUCTURAL difference in the protocol's
+design, not merely a "use more iterations" parameter tweak — which is
+exactly why WPA3 required a genuinely NEW handshake protocol rather than
+simply patching WPA2's existing PBKDF2 parameters.
+</div>
+
+<h2 id="sec8">8. Full Code Walkthrough — derive_ptk() And The PTK's Sub-Keys</h2>
+
+<p>The 384-bit (48-byte) PTK this module's own code produces isn't used
+as one single, undifferentiated key in real WPA2 — it's SPLIT into
+distinct sub-keys, each with its own specific purpose (a detail this
+module's own simulation doesn't need to split out for its core teaching
+goal, but worth knowing about honestly): a KCK (Key Confirmation Key,
+used to compute the MICs that authenticate handshake messages 2-4 — this
+IS actually exercised, conceptually, by this module's own MIC
+verification), a KEK (Key Encryption Key, used to encrypt the GTK
+delivered in message 3), and the actual TK (Temporal Key, the portion
+genuinely used to encrypt real DATA traffic once the handshake
+completes). Recognizing that "the PTK" is really a bundle of
+differently-purposed sub-keys, not one monolithic value, is a real,
+worthwhile piece of depth beyond what this module's own simplified
+48-byte-blob simulation directly demonstrates.</p>
+
+<h2 id="sec9">9. Many Worked Scenarios</h2>
+
+<div class="scenario">
+<h4>Scenario: two DIFFERENT devices connecting to the SAME AP get DIFFERENT PTKs — why?</h4>
+<p>Even though both devices share the identical PMK (same SSID, same
+network passphrase), each device has its OWN unique MAC address, and
+each individual handshake generates FRESH, independent ANonce/SNonce
+values (Section 3) — since <code>derive_ptk()</code>'s input includes
+BOTH MAC addresses AND both nonces, a different device (different MAC)
+and a different handshake instance (different nonces, even for the SAME
+device reconnecting later) ALWAYS produces a genuinely different PTK.
+This is exactly why compromising one device's session traffic doesn't
+automatically expose ANY OTHER device's traffic on the same network,
+despite all devices sharing the identical underlying PMK/passphrase.</p>
+</div>
+
+<h2 id="sec10">10. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common confusion: conflating the PMK with the actual Wi-Fi
+password.</strong> The PASSPHRASE is what you type (human-memorable,
+8-63 characters, per this module's own validation check). The PMK is
+the 256-bit DERIVED cryptographic key (computed via 4096 rounds of
+PBKDF2) — related to the passphrase by a one-way (computationally
+infeasible to reverse directly) derivation, not the same thing at all.
+Even if an attacker somehow obtained the raw PMK bytes, they would NOT
+directly have "your password" — though, per Section 1's discussion, they
+COULD potentially recover it via offline guessing if the underlying
+passphrase itself is weak/guessable.
+</div>
+
+<h2 id="sec11">11. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 13, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Explain PBKDF2 key stretching's purpose precisely, including why
+4096 specifically slows down an attacker proportionally.</li>
+<li>Explain why the SSID functions as a salt and what real, practical
+consequence that has for precomputed attack tables.</li>
+<li>Narrate all 4 handshake messages with precise reasoning for each
+one's purpose, especially why fresh nonces are needed despite a static,
+reused PMK.</li>
+<li>Explain why MAC/nonce ordering (min/max) is mathematically necessary
+for both sides to reach an identical PTK.</li>
+<li>Explain, structurally (not just "it's more secure"), why WPA3's SAE
+resists offline dictionary attacks in a way WPA2-PSK cannot.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 13 goes deeper into the cryptographic primitives
+this module used as building blocks (HMAC, key derivation, symmetric
+vs. asymmetric crypto) and assumes you're comfortable with THIS
+module's applied use of them as a concrete, already-understood example
+to build formal theory on top of.</p>
+
+</body>
+</html>

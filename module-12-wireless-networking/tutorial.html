@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 12 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  .warn { background: #fdecec; border-left: 4px solid #c0392b; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 12 — Tutorial</h1>
+<p>Goal: understand the actual cryptography behind your Wi-Fi password —
+computed for real, not simulated — and see exactly what a beacon frame
+contains before ever touching real wireless hardware.</p>
+
+<div class="warn">
+<strong>Scope for this module:</strong> real wireless packet capture
+requires a Wi-Fi adapter in "monitor mode," which needs specific hardware
+support and elevated privileges, and isn't available in this course's
+build/test environment. Everything in this file that generates output was
+tested for real. The hands-on wireless capture in Step 3 is a guided
+exercise for your OWN access point only — never capture or attempt to
+crack a network you don't own or have explicit authorization to test. See
+../SAFETY.md.
+</div>
+
+<h2>Step 1 — the actual math behind your Wi-Fi password</h2>
+<pre>cd module-12-wireless-networking
+python wpa2_psk_derivation.py</pre>
+<div class="expect"><strong>Expected:</strong> the script computes a PMK
+and compares it to <code>f42c6fc52df0ebef9ebb4b90b38a5f902e83fe1b135a70e23aed762e9710a12e</code>
+— a published test vector (SSID <code>IEEE</code>, passphrase
+<code>password</code>) cited across WPA2 security literature for years.
+Confirmed matching during this module's build, in both Python and Node.
+This is the exact PBKDF2-HMAC-SHA1 computation every real access point and
+every real device performs the moment you type a Wi-Fi password.</div>
+
+<h2>Step 2 — the 4-way handshake, computed for real</h2>
+<pre>python wpa_handshake_sim.py</pre>
+<div class="expect"><strong>Expected:</strong> AP and STA each compute a
+PTK independently, using only their own nonce, the peer's nonce (exchanged
+in messages 1-2), and both MAC addresses — the PMK itself is never
+transmitted, and neither is the PTK. The script confirms both sides
+arrive at byte-identical PTKs. This was verified during this module's
+build — Python and Node also produce identical PTKs from identical fixed
+inputs, confirming the PRF implementation is correct in both languages.</div>
+
+<h2>Step 3 — a real beacon frame, built by hand</h2>
+<pre>python wifi_frame_builder.py</pre>
+<div class="expect"><strong>Expected:</strong> a 54-byte frame with a
+correctly parsed Frame Control field (type=Management, subtype=Beacon) and
+your test SSID extracted from its tagged parameter — the exact structure
+every AP broadcasts roughly 10 times a second, unencrypted.</div>
+
+<h2>Step 4 (your own AP only) — capture it for real</h2>
+<p>If you have a Wi-Fi adapter capable of monitor mode (many external USB
+adapters support this; most laptop built-in cards don't) and Wireshark or
+<code>aircrack-ng</code> installed:</p>
+<pre># Linux example -- exact commands vary by adapter/driver
+sudo airmon-ng start wlan0
+sudo airodump-ng wlan0mon</pre>
+<div class="expect"><strong>Expected (against YOUR OWN AP only):</strong>
+you'll see your own SSID's beacon frames listed, readable in plaintext —
+matching Step 3's structure exactly. If you capture a real 4-way handshake
+(by watching a device reconnect to your own AP), you can compare the
+EAPOL message structure to Step 2's simulated exchange.</div>
+<div class="warn">
+Only ever capture or analyze traffic on networks you own or have
+explicit written authorization to test. Capturing a neighbor's or
+employer's wireless traffic without authorization is illegal in most
+jurisdictions, regardless of whether you attempt to crack anything.
+</div>
+
+<h2>Exercises before Module 13</h2>
+<ol>
+  <li><strong>Compute your own real network's PMK.</strong> Use your
+      actual home Wi-Fi's SSID and passphrase (change it back afterward if
+      you're worried about typing it into a script, or just use a test
+      value) and see the real 256-bit key your devices already compute
+      today.</li>
+  <li><strong>Add a Probe Request frame.</strong> Extend
+      <code>wifi_frame_builder.py</code>/<code>.js</code> to build subtype
+      4 (Probe Request) instead of subtype 8 (Beacon) — this is the frame
+      your phone sends actively asking "is anyone here?", which is why
+      hidden-SSID networks still leak their name (see the script's closing
+      note).</li>
+  <li><strong>Time-attack the PBKDF2 iteration count.</strong> Modify
+      <code>derive_pmk</code> to accept a custom iteration count, and time
+      how long 4096 iterations takes vs. 100,000. This is directly why
+      WPA2's PSK derivation being "only" 4096 iterations (fixed by the
+      spec, unlike modern password hashing which often uses much higher
+      counts) matters for offline dictionary attack speed — a topic
+      Module 16 revisits from the attacker's side, in an authorized lab
+      context only.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 13:</strong> you should be able to explain exactly
+what a PMK and PTK are, how they differ, and why neither is ever
+transmitted over the air even during the handshake that establishes them.
+Module 13 goes deeper into the cryptographic primitives underneath all of
+this — symmetric/asymmetric crypto, and a full TLS handshake dissection.
+</div>
+
+</body>
+</html>

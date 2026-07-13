@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 12 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 12 — Deep Theory: WPA2 Cryptography, WPA3, and Commands From Zero</h1>
+
+<h2>1. Command-by-Command: Monitor Mode Capture</h2>
+
+<h3><code>sudo airmon-ng start wlan0</code></h3>
+<p><strong>What it does:</strong> puts your wireless adapter into
+"monitor mode" — a special operating mode where the adapter captures
+EVERY 802.11 frame it can physically receive, regardless of destination
+MAC address or whether you're even associated with any network, and
+WITHOUT the normal 802.11-to-Ethernet translation your OS's networking
+stack usually performs automatically. Ordinary "managed mode" (what your
+Wi-Fi adapter uses for normal internet access) only surfaces frames
+addressed to you, already stripped of most 802.11-specific header detail
+— monitor mode is the wireless equivalent of the raw capture privilege
+Module 02 discussed for wired Ethernet, requiring the same kind of
+elevated access and specific hardware/driver support.</p>
+
+<h3><code>sudo airodump-ng wlan0mon</code></h3>
+<p><strong>What it does:</strong> reads raw 802.11 frames from the
+monitor-mode interface <code>airmon-ng</code> just created (note the
+<code>mon</code> suffix — a new virtual interface distinct from the
+original <code>wlan0</code>) and displays a live summary: every visible
+SSID/BSSID, signal strength, channel, and encryption type — built
+directly from parsing beacon frames exactly like
+<code>wifi_frame_builder.py</code> constructs, just captured from the
+air instead of built in code.</p>
+
+<h2>2. PBKDF2, Formally</h2>
+<p>PBKDF2 (Password-Based Key Derivation Function 2, RFC 2898) takes a
+human-memorable password (low entropy — predictable, guessable,
+typically far fewer than 256 bits of true randomness) and stretches it
+into a fixed-length cryptographic key, DELIBERATELY slowly, via repeated
+HMAC iterations:</p>
+<pre>PMK = PBKDF2(HMAC-SHA1, passphrase, salt=SSID, iterations=4096, keylen=256 bits)</pre>
+<p>The SSID serves as the "salt" — meaning two networks with the IDENTICAL
+passphrase but DIFFERENT SSIDs produce completely different PMKs. This is
+a deliberate defense against precomputed lookup tables (rainbow tables):
+without a salt, an attacker could compute PMKs for common passwords ONCE
+and reuse that table against every network using those passwords. Salting
+with the SSID forces a SEPARATE precomputation per SSID, dramatically
+raising the cost of building a reusable attack table.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does WPA2-PSK use only
+4096 PBKDF2 iterations, when modern password-hashing guidance (for
+things like web application login credentials) often recommends
+hundreds of thousands of iterations or memory-hard alternatives like
+Argon2?" 4096 is fixed by the IEEE 802.11i specification itself and
+cannot be increased without breaking interoperability with every
+existing device implementing the standard — WPA2 predates modern
+password-hashing best practices, and the number was chosen as a
+reasonable-for-its-time balance between security and computation cost on
+period-appropriate hardware (including low-power embedded devices that
+need to derive this key quickly). This fixed, comparatively low
+iteration count is precisely why WPA2 handshakes captured from weak,
+short, or dictionary-word passphrases remain crackable via offline
+brute-force in practical timeframes today — the exam-relevant takeaway is
+that the STRENGTH of the passphrase itself matters far more for WPA2 than
+it would for a system using a modern, much higher iteration count.
+</div>
+
+<h2>3. WPA3 and SAE: What Changed, and Why</h2>
+<p>WPA3 replaces WPA2-PSK's 4-way handshake with SAE (Simultaneous
+Authentication of Equals, based on the "Dragonfly" key exchange), which
+provides TWO properties WPA2-PSK structurally lacks:</p>
+<table>
+<tr><th>Property</th><th>WPA2-PSK</th><th>WPA3-SAE</th></tr>
+<tr><td>Offline dictionary attack resistance</td><td>Vulnerable — a captured handshake can be brute-forced offline against passphrase guesses, entirely on the attacker's own hardware, with no interaction with the real AP required</td><td>Resistant by design — SAE requires an ACTIVE, per-guess interaction with the real AP for each password guess, making offline brute-forcing structurally infeasible (an attacker must interact with the real network once per guess, which is detectable and rate-limitable)</td></tr>
+<tr><td>Forward secrecy</td><td>No — if the PSK (passphrase) is later compromised, ALL previously captured traffic for that network can be decrypted retroactively</td><td>Yes — each session's keys are derived such that compromising the passphrase later does not let an attacker decrypt previously captured sessions</td></tr>
+</table>
+<div class="brain">
+<strong>Brain power:</strong> why does "requires interaction with the
+real AP per guess" meaningfully change an attacker's economics, compared
+to WPA2's offline-crackable handshake? Offline attacks scale with the
+attacker's OWN available compute (GPUs, cloud compute rented at will,
+completely undetectable by the victim network). An attack requiring
+per-guess interaction with the real AP is bounded by the AP's own
+response rate, is directly observable/detectable by the network owner
+(unusual repeated authentication attempts), and can be rate-limited or
+locked out by the AP itself — fundamentally different attacker economics,
+even though both ultimately protect the same kind of secret (a
+passphrase).
+</div>
+
+<h2>4. Enterprise Wi-Fi: 802.1X/EAP, Briefly</h2>
+<p>Everything this module built assumes WPA2-PERSONAL (a single shared
+passphrase for the whole network — what a home network uses).
+WPA2/3-ENTERPRISE instead uses 802.1X port-based network access control
+combined with EAP (Extensible Authentication Protocol) — each user
+authenticates with THEIR OWN individual credentials (often via a RADIUS
+server checking against a corporate directory) rather than everyone
+sharing one passphrase. This means individual users can be revoked
+without changing a network-wide shared secret, and it produces
+individual accountability (which specific user's credentials were used)
+that a shared PSK fundamentally cannot provide — the actual reason large
+organizations use Enterprise mode despite its added infrastructure
+complexity (a RADIUS server is a real, separate piece of infrastructure
+this course doesn't build).</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>PBKDF2 salting with SSID</td><td>Module 13's general applied-cryptography literacy, general password-security reasoning</td></tr>
+<tr><td>WPA2 vs. WPA3/SAE tradeoffs</td><td>Module 16's authorized wireless assessment context</td></tr>
+<tr><td>802.1X/EAP enterprise authentication</td><td>General enterprise security architecture literacy, Tier 7's Zero Trust concepts</td></tr>
+<tr><td>Monitor mode / raw wireless capture privilege</td><td>Direct parallel to Module 02's wired raw capture privilege discussion</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
