@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 04 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 04 — Deep Theory: Subnetting and VLSM, Command by Command</h1>
+
+<h2>1. Why CIDR Replaced "Classful" Addressing (History That Explains the Notation)</h2>
+<p>Before 1993, IPv4 addressing used rigid "classes": Class A
+(first octet 1-126, implying a /8 network — 16 million hosts), Class B
+(/16 — 65,536 hosts), Class C (/24 — 254 hosts), with the class
+determined entirely by an address's leading bits. This was catastrophically
+wasteful — an organization needing 300 addresses (too many for a Class C,
+"wasting" almost all of a Class B's 65,536) had no middle option. CIDR
+(Classless Inter-Domain Routing, RFC 1518/1519) replaced this with the
+<code>/N</code> notation this module uses throughout — ANY prefix length
+from 0 to 32 is valid, letting network size match actual need instead of
+snapping to one of three fixed sizes. This is WHY the notation is
+<code>192.168.1.0/26</code> rather than "Class C" — CIDR explicitly
+abolished the class concept.</p>
+
+<h2>2. Command-by-Command: What Step 2's Self-Test Actually Proves</h2>
+
+<h3><code>python subnet_calc.py --self-test</code></h3>
+<p><strong>What it does:</strong> generates 500 random IP/prefix
+combinations, computes network and broadcast addresses TWO independent
+ways — this module's own hand-rolled bitwise math, AND Python's official
+<code>ipaddress</code> standard library module — and confirms they agree
+every single time. <strong>Why this matters as proof, not just testing:</strong>
+the <code>ipaddress</code> module is Python's own officially maintained,
+widely-used, battle-tested implementation. Agreement across 500 random
+cases is strong evidence the hand-rolled bit math is CORRECT, not merely
+"looks right on the few examples I checked by hand."</p>
+
+<h3><code>node subnet_calc.js --self-test 50</code></h3>
+<p><strong>What it does differently:</strong> Node has no bundled
+standard-library equivalent to Python's <code>ipaddress</code> module, so
+this test instead SHELLS OUT to <code>subnet_calc.py</code> (spawning it
+as a subprocess) and compares Node's own computed answer against Python's
+answer for the same random inputs. <strong>Why this is still valid
+proof:</strong> since Python's file was ALREADY validated against the
+`ipaddress` module, agreement between Node and Python transitively
+confirms Node against the same authoritative source, one hop removed —
+a chain of trust, not a weaker test.</p>
+
+<h2>3. The Bitwise Math, Fully Derived</h2>
+<p>Every value <code>subnet_calc.py</code> computes reduces to three
+operations on 32-bit integers, all from Module 00a's boolean algebra:</p>
+<table>
+<tr><th>Value</th><th>Formula</th><th>Why</th></tr>
+<tr><td>Subnet mask</td><td><code>0xFFFFFFFF &lt;&lt; (32 - prefix)</code></td><td>Left-shifting all-1s by (32-prefix) positions leaves exactly `prefix` 1-bits at the top, 0s filling in from the right</td></tr>
+<tr><td>Network address</td><td><code>ip AND mask</code></td><td>AND is a "stencil" (Module 00a) — keeps IP's bits only where mask has 1s, zeroing the host portion</td></tr>
+<tr><td>Wildcard mask</td><td><code>NOT mask</code></td><td>Bit-for-bit inverse — 0s become 1s and vice versa, isolating exactly the host-portion bits</td></tr>
+<tr><td>Broadcast address</td><td><code>network OR wildcard</code></td><td>OR is a "merge" — sets every host bit to 1 while leaving the already-correct network bits untouched</td></tr>
+<tr><td>Usable hosts</td><td><code>2^(32-prefix) - 2</code></td><td>Total addresses in the block, minus the network address itself and the broadcast address (neither is assignable to a host)</td></tr>
+</table>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Derive the broadcast address
+of 10.20.30.40/28 by hand, showing your work in binary." A strong answer
+computes the mask (/28 = 11111111.11111111.11111111.11110000 =
+255.255.255.240), ANDs it with the IP to get the network address
+(10.20.30.32, since 40 = 00101000 and the mask's last octet keeps only
+the top 4 bits, giving 00100000 = 32), then ORs the network address with
+the wildcard mask (0.0.0.15) to flip the bottom 4 bits to all 1s, giving
+10.20.30.47 — walking through the actual bit operations, not just stating
+memorized "block size" shortcuts.
+</div>
+
+<h2>4. VLSM's Allocation Algorithm, Formally</h2>
+<p><code>vlsm_allocate()</code> implements a classic "first-fit
+decreasing" bin-packing strategy: sort requirements largest-first, then
+place each one at the SMALLEST address meeting two constraints
+simultaneously — (1) large enough to hold the requirement, and (2) aligned
+to a boundary evenly divisible by its own block size (a /25 block can only
+start at .0 or .128 within a /24, never at .64, because block boundaries
+must be powers-of-2-aligned for the resulting network/mask arithmetic to
+work correctly at all).</p>
+
+<div class="why">
+<strong>Why must a subnet's starting address be a multiple of its own
+size?</strong> Because the network address is DEFINED as "IP AND mask" —
+for THAT operation to correctly identify a clean block boundary, the
+block itself must start exactly where the mask's zero-bits (the host
+portion) are all simultaneously zero. A /25 block (128 addresses) can
+only correctly start at addresses where the low 7 bits are entirely 0 —
+which are exactly the multiples of 128 (.0 and .128 within a /24). This
+isn't a convention — it's a direct mathematical consequence of how AND
+and the mask define "network address" in the first place.
+</div>
+
+<h2>5. RFC 3021 (Exercise 2) and the /31 Special Case</h2>
+<p>The "reserve network and broadcast" convention exists because a block
+needs to be able to refer to "the whole block" (network address) and
+"everyone in the block" (broadcast) as concepts distinct from any single
+host. A 2-address block (/31) is too small for that distinction to be
+meaningful — with only 2 addresses total, there's no room left for actual
+hosts if 2 are reserved for group-addressing concepts. RFC 3021 (1996)
+formally recognized this for point-to-point links specifically (where
+"broadcast to everyone in this segment" is meaningless anyway — there are
+only ever exactly 2 devices on a point-to-point link) and redefined /31 to
+treat BOTH addresses as usable host addresses.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>CIDR notation, classless addressing</td><td>Every module referencing a network by /N notation from here on</td></tr>
+<tr><td>AND/OR bitwise derivation of network/broadcast</td><td>Module 09's VLAN planning, Module 05's routing table matching</td></tr>
+<tr><td>VLSM alignment requirement</td><td>Module 09's real lab subnet plan, Module 17's cloud VPC subnet design</td></tr>
+<tr><td>/31 point-to-point special case</td><td>Module 05/06's router-to-router link addressing</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

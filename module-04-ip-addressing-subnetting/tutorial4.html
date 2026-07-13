@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 04 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 04 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+subnet ANY CIDR notation by hand, in your head, faster than typing the
+command — and explain VLSM's packing algorithm well enough to design a
+real allocation plan on paper before ever running the code.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">CIDR notation, completely, from zero</a></li>
+<li><a href="#sec2">The subnet calculation algorithm, traced on five different prefixes</a></li>
+<li><a href="#sec3">Edge cases: /31, /32, and /0 — why they're special</a></li>
+<li><a href="#sec4">The wildcard mask — what it's for, precisely</a></li>
+<li><a href="#sec5">VLSM — the full algorithm, traced completely on the tutorial's own example</a></li>
+<li><a href="#sec6">Why largest-first packing minimizes waste — proven with a counter-example</a></li>
+<li><a href="#sec7">Subnetting drill technique — fast mental math, step by step</a></li>
+<li><a href="#sec8">Full code walkthrough — subnet_calc.py</a></li>
+<li><a href="#sec9">Many worked scenarios — a full drill set with answers shown</a></li>
+<li><a href="#sec10">Troubleshooting and common confusions</a></li>
+<li><a href="#sec11">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. CIDR Notation, Completely, From Zero</h2>
+
+<p>CIDR (Classless Inter-Domain Routing) notation — <code>192.168.1.0/24</code>
+— packs TWO pieces of information into one string: an IP address, and,
+after the slash, a PREFIX LENGTH — how many of the address's 32 bits are
+the NETWORK portion (directly reusing Module 01 Section 4 and Module
+00a's bitwise AND lesson). <code>/24</code> means "the first 24 bits are
+network, the remaining 8 are host" — exactly a 255.255.255.0 mask,
+just expressed as a bit COUNT instead of a dotted-decimal mask value.</p>
+
+<div class="why">
+<strong>Why did CIDR notation (a slash and a number) replace the older
+"Class A/B/C" system historically taught first?</strong> The old
+class-based system rigidly fixed network sizes to exactly 3 possible
+boundaries (Class A = /8, Class B = /16, Class C = /24) — hugely
+wasteful in practice (an organization needing 300 addresses would be
+forced into an entire Class B block of 65,536 addresses, since no size
+in between was expressible). CIDR's slash notation allows ANY prefix
+length from 0 to 32, making dramatically more efficient allocation
+possible — this module's own VLSM section (Section 5) exists ENTIRELY
+because CIDR made allocating differently-sized subnets from one block
+possible at all; the old class system couldn't express this flexibility.
+</div>
+
+<h2 id="sec2">2. The Subnet Calculation Algorithm, Traced On Five Different Prefixes</h2>
+
+<p>Every single subnet calculation in this module reduces to the exact
+same four-step algorithm, regardless of prefix length. Trace it
+completely, five separate times, on five genuinely different prefix
+sizes.</p>
+
+<div class="scenario">
+<h4>Trace 1: 192.168.1.0/24 (a typical home network)</h4>
+<pre>Step 1 -- IP as a 32-bit integer:
+  192.168.1.0 = 11000000.10101000.00000001.00000000
+
+Step 2 -- mask from prefix (24 ones, then 8 zeros):
+  11111111.11111111.11111111.00000000
+
+Step 3 -- network = IP AND mask:
+  11000000.10101000.00000001.00000000  (unchanged -- already aligned)
+  = 192.168.1.0
+
+Step 4 -- broadcast = network OR (NOT mask):
+  NOT mask = 00000000.00000000.00000000.11111111
+  network OR that = 11000000.10101000.00000001.11111111
+  = 192.168.1.255
+
+Usable hosts: 2^(32-24) - 2 = 256 - 2 = 254
+Usable range: 192.168.1.1 - 192.168.1.254</pre>
+</div>
+
+<div class="scenario">
+<h4>Trace 2: 192.168.1.69/26 (matching Module 01's own worked example exactly)</h4>
+<pre>Step 1: 192.168.1.69 = ...00000001.01000101
+
+Step 2: /26 mask, last octet: 11000000 (192 decimal, 2 leading 1-bits
+        in the last octet -- prefix 26 = 24 + 2, so the last octet
+        contributes exactly 2 network bits)
+
+Step 3: network, last octet: 01000101 AND 11000000 = 01000000 = 64
+        Network: 192.168.1.64
+
+Step 4: broadcast, last octet: 64 OR 00111111 (NOT of 11000000) = 01111111 = 127
+        Broadcast: 192.168.1.127
+
+Usable hosts: 2^(32-26) - 2 = 64 - 2 = 62
+Usable range: 192.168.1.65 - 192.168.1.126</pre>
+<p>This EXACTLY matches Module 01's own Worked Scenario 2 -- the same
+underlying bitwise-AND mechanism, now extended to also compute the
+broadcast address via OR, and expressed through this module's real,
+tested <code>subnet_info()</code> function rather than by hand.</p>
+</div>
+
+<div class="scenario">
+<h4>Trace 3: 10.0.0.0/8 (a large enterprise-scale block)</h4>
+<pre>Mask: 11111111.00000000.00000000.00000000 (255.0.0.0)
+Network: 10.0.0.0 (unchanged, already aligned to the /8 boundary)
+Broadcast: 10.255.255.255
+Total addresses: 2^24 = 16,777,216
+Usable hosts: 16,777,214
+
+This is why 10.0.0.0/8 is favored for LARGE organizations (Module 17's
+cloud VPCs commonly use blocks from this range) -- a single /8 provides
+more addresses than most organizations will ever need on one internal
+network, all under ONE contiguous, easy-to-remember prefix.</pre>
+</div>
+
+<div class="scenario">
+<h4>Trace 4: 192.168.1.0/30 (a tiny 4-address block, common for point-to-point router links)</h4>
+<pre>Mask: 11111111.11111111.11111111.11111100 (255.255.255.252)
+Network: 192.168.1.0
+Broadcast: 192.168.1.3
+Total addresses: 2^2 = 4
+Usable hosts: 4 - 2 = 2 (.1 and .2 -- .0 is network, .3 is broadcast)
+
+This is the CLASSIC size for a link connecting exactly two routers --
+just enough addresses for both router interfaces, with the network and
+broadcast addresses "wasted" but required under ordinary (non-/31)
+addressing.</pre>
+</div>
+
+<div class="scenario">
+<h4>Trace 5: 203.0.113.128/29 (a small allocation, 8 total addresses)</h4>
+<pre>Mask: 11111111.11111111.11111111.11111000 (255.255.255.248)
+Network: 203.0.113.128 (already aligned -- 128 = 10000000, and a /29
+         mask's last octet is 11111000, so 10000000 AND 11111000 = 10000000)
+Broadcast: 203.0.113.135
+Total addresses: 2^3 = 8
+Usable hosts: 6
+Usable range: 203.0.113.129 - 203.0.113.134</pre>
+</div>
+
+<h2 id="sec3">3. Edge Cases: /31, /32, and /0 — Why They're Special</h2>
+
+<h3>3.1 — /32: a "network" of exactly one address</h3>
+<p>A /32 mask is ALL ONES (<code>255.255.255.255</code>) — every single
+bit is "network," leaving ZERO host bits. This means the "network" and
+the single usable address are THE SAME address — there's no room for a
+separate network/broadcast/host distinction at all.
+<code>subnet_info()</code>'s own special case
+(<code>if prefix == 32: usable_hosts = 1, first_host = last_host =
+network_int</code>) handles exactly this: rather than computing
+<code>2^0 - 2 = -1</code> (a nonsensical negative host count, since the
+general formula assumes at least a network and broadcast address exist
+separately), it special-cases this to correctly report exactly 1 usable
+address. A /32 is commonly used to describe a SINGLE HOST route (a
+routing table entry pointing to one specific device, Module 05's
+territory) rather than an actual subnet with multiple hosts.</p>
+
+<h3>3.2 — /31: RFC 3021's genuinely special exception</h3>
+<p>Under the GENERAL rule, a /31 (2 total addresses) would compute
+<code>2^1 - 2 = 0</code> usable hosts — meaning NEITHER address would be
+usable, since with only 2 addresses total, one would normally be
+"network" and the other "broadcast," leaving nothing for an actual host.
+RFC 3021 creates a DELIBERATE, standards-sanctioned EXCEPTION
+specifically for point-to-point links: since a link connecting exactly 2
+routers has no need for a broadcast address at all (broadcast makes
+sense when there could be MANY devices on a segment; with exactly 2
+devices directly connected, there's no ambiguity about who a "broadcast"
+would even be for), BOTH addresses in a /31 are treated as usable host
+addresses, doubling addressing efficiency for these very common
+point-to-point links.</p>
+
+<div class="why">
+<strong>Why does this module's Exercise 2 ask you to implement the /31
+optimization for VLSM specifically?</strong> Because VLSM's whole
+purpose is minimizing WASTED address space (Section 6) — and a
+point-to-point link (needing exactly 2 hosts) is EXACTLY the case RFC
+3021 was designed for. Using a standard /30 for a 2-host requirement
+wastes 2 addresses (network + broadcast) out of every 4 allocated; using
+a /31 instead wastes ZERO — a real, practical efficiency gain that
+matters at scale (a large network with hundreds of point-to-point router
+links saves hundreds of addresses by using /31s instead of /30s
+throughout).
+</div>
+
+<h2 id="sec4">4. The Wildcard Mask — What It's For, Precisely</h2>
+
+<p><code>wildcard_int = (~mask_int) & 0xFFFFFFFF</code> computes the
+BITWISE COMPLEMENT (Module 00a Section 4.4's NOT) of the subnet mask —
+everywhere the mask has a 1 (network bit), the wildcard has a 0, and
+vice versa.</p>
+
+<div class="why">
+<strong>Why does this module compute and display a wildcard mask at all,
+given it's not needed for the network/broadcast calculation itself
+(which uses the regular mask directly)?</strong> Wildcard masks are the
+REQUIRED notation for certain real router configuration contexts —
+most notably, Cisco IOS ACL (Access Control List) rules and OSPF network
+statements (both relevant to Module 05/06's real router configuration
+work) use WILDCARD masks, not regular subnet masks, in their syntax.
+This is a genuinely confusing, real-world gotcha for anyone new to Cisco
+IOS: writing an ACL rule, you must supply the INVERTED form of the
+subnet mask you're thinking in — this module computing and displaying
+it directly, right alongside the regular mask, is meant to make that
+translation automatic and immediately visible rather than a source of
+configuration errors.
+</div>
+
+<h2 id="sec5">5. VLSM — The Full Algorithm, Traced Completely On The Tutorial's Own Example</h2>
+
+<p>Trace <code>vlsm_allocate('192.168.1.0/24', [('Sales', 50),
+('Engineering', 100), ('Guest WiFi', 20), ('Point-to-point link', 2)])</code>
+completely, matching this module's own tutorial.html Step 4 exactly.</p>
+
+<div class="scenario">
+<h4>Complete VLSM trace</h4>
+<pre>Step 1 -- sort by hosts needed, LARGEST FIRST:
+  Engineering (100), Sales (50), Guest WiFi (20), Point-to-point (2)
+
+Step 2 -- for EACH requirement, find the smallest prefix that fits:
+
+  Engineering needs 100 hosts -> needed_addresses = 102
+    /25 gives 2^7=128 addresses (128 >= 102) -- FITS
+    /26 would give only 64 (64 < 102) -- doesn't fit
+    -> prefix 25, block_size 128
+
+    cursor starts at 192.168.1.0 (already 128-aligned)
+    Allocation: 192.168.1.0/25  (network .0, broadcast .127, 126 usable)
+    cursor advances to 192.168.1.128
+
+  Sales needs 50 hosts -> needed_addresses = 52
+    /26 gives 64 (64 >= 52) -- FITS
+    /27 would give only 32 (32 < 52) -- doesn't fit
+    -> prefix 26, block_size 64
+
+    cursor is 192.168.1.128 -- already 64-aligned (128 / 64 = 2 exactly)
+    Allocation: 192.168.1.128/26  (network .128, broadcast .191, 62 usable)
+    cursor advances to 192.168.1.192
+
+  Guest WiFi needs 20 hosts -> needed_addresses = 22
+    /27 gives 32 (32 >= 22) -- FITS
+    -> prefix 27, block_size 32
+
+    cursor is 192.168.1.192 -- already 32-aligned (192 / 32 = 6 exactly)
+    Allocation: 192.168.1.192/27  (network .192, broadcast .223, 30 usable)
+    cursor advances to 192.168.1.224
+
+  Point-to-point needs 2 hosts -> needed_addresses = 4
+    /30 gives 4 (4 >= 4) -- FITS
+    -> prefix 30, block_size 4
+
+    cursor is 192.168.1.224 -- already 4-aligned (224 / 4 = 56 exactly)
+    Allocation: 192.168.1.224/30  (network .224, broadcast .227, 2 usable)
+    cursor advances to 192.168.1.228
+
+Final check: cursor (228) never exceeded end (256) -- entire plan fits
+within the original /24, with 28 addresses (228-255) left unused.</pre>
+</div>
+
+<div class="brain">
+<strong>Brain power:</strong> why does the cursor need EXPLICIT
+re-alignment (<code>if cursor % block_size != 0: cursor += block_size -
+(cursor % block_size)</code>) before EVERY allocation, rather than just
+placing each block immediately after the previous one ends? Because a
+subnet's network address must ALWAYS be a multiple of its own block
+size — this is a direct, mechanical consequence of the AND-based network
+calculation (Section 2): a /27 block's network address must have all
+its host bits (the low 5 bits) as zero, meaning the network address
+itself must be a multiple of 32 (2^5). If blocks were packed with no
+regard for this alignment requirement, a subsequently-allocated block
+could start at a non-aligned address, making it IMPOSSIBLE to express as
+a valid CIDR block at all — this is exactly why, in the trace above,
+the Guest WiFi allocation (32-aligned) happened to fall on an
+already-aligned boundary purely as a consequence of the PRECEDING
+block's size being a multiple of 32 too, but this isn't always
+guaranteed, which is exactly why the explicit alignment step exists as a
+safeguard for cases where it ISN'T naturally aligned.
+</div>
+
+<h2 id="sec6">6. Why Largest-First Packing Minimizes Waste — Proven With A Counter-Example</h2>
+
+<div class="scenario">
+<h4>Counter-example: what happens if you allocate smallest-first instead</h4>
+<pre>Same requirements, but processed SMALLEST first: Point-to-point (2),
+Guest WiFi (20), Sales (50), Engineering (100).
+
+Point-to-point (2 hosts, /30, size 4): 192.168.1.0/30 -- cursor -> .4
+Guest WiFi (20 hosts, /27, size 32): needs 32-alignment!
+  cursor is at .4, NOT a multiple of 32 -- must advance to .32
+  Allocation: 192.168.1.32/27 -- cursor -> .64
+  WASTED: addresses .4 through .31 (28 addresses) are now stranded --
+  too small a gap to ever be used by a LATER, larger allocation, since
+  nothing smaller needs to be placed there anymore.
+
+Sales (50 hosts, /26, size 64): cursor is .64, already aligned
+  Allocation: 192.168.1.64/26 -- cursor -> .128
+
+Engineering (100 hosts, /25, size 128): cursor is .128, already aligned
+  Allocation: 192.168.1.128/25 -- but this needs 128 addresses, and
+  only 128 remain (.128-.255) -- it JUST fits, but with ZERO margin,
+  whereas the largest-first version left 28 spare addresses at the END
+  (a usable margin for future growth) instead of stranding them in an
+  unusable GAP in the middle.</pre>
+<p>Both approaches technically "fit" in this specific example — but
+largest-first leaves its UNUSED space as one contiguous block at the
+end (genuinely useful for future allocations), while smallest-first
+strands unused space in awkward, hard-to-reuse gaps between existing
+allocations. This is a real, general property of "bin packing"-style
+allocation problems (a genuine, well-studied class of problems in
+computer science) — placing large, hard-to-fit items first and small,
+flexible items last consistently produces less FRAGMENTATION than the
+reverse order.</p>
+</div>
+
+<h2 id="sec7">7. Subnetting Drill Technique — Fast Mental Math, Step By Step</h2>
+
+<p>The technique real network engineers use for FAST subnetting (without
+writing out full binary) relies on memorizing the "magic number"
+technique — the block size doubling pattern.</p>
+
+<table>
+<tr><th>Prefix</th><th>Last significant octet's mask value</th><th>Block size ("magic number")</th></tr>
+<tr><td>/25</td><td>128</td><td>128</td></tr>
+<tr><td>/26</td><td>192</td><td>64</td></tr>
+<tr><td>/27</td><td>224</td><td>32</td></tr>
+<tr><td>/28</td><td>240</td><td>16</td></tr>
+<tr><td>/29</td><td>248</td><td>8</td></tr>
+<tr><td>/30</td><td>252</td><td>4</td></tr>
+</table>
+<div class="scenario">
+<h4>Fast technique demonstrated: which subnet does 192.168.1.100/27 belong to, without writing binary at all?</h4>
+<pre>1. /27's block size (magic number) is 32 (from the table above).
+2. Find the largest multiple of 32 that is <= 100:
+   0, 32, 64, 96, 128... -- 96 is the largest multiple of 32 <= 100.
+3. Network address: 192.168.1.96
+4. Broadcast: network + (block_size - 1) = 96 + 31 = 127
+   -> 192.168.1.127
+5. Usable range: .97 - .126
+
+This ENTIRE calculation took three subtractions and one table lookup --
+no binary conversion needed at all. This IS the actual mental-math
+technique real engineers use for speed, and it's mathematically
+IDENTICAL to the full bitwise-AND method (Section 2) -- "round down to
+the nearest multiple of the block size" and "AND with the mask" are
+the same operation, just expressed differently.</pre>
+</div>
+
+<h2 id="sec8">8. Full Code Walkthrough — subnet_calc.py</h2>
+
+<h3>8.1 — ip_to_int(), and why it packs octets with shifts</h3>
+<pre>return (octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]</pre>
+<p>This builds a single 32-bit integer from 4 separate octets by placing
+each one at its correct BIT POSITION: the first octet is shifted left by
+24 bits (into the highest byte), the second by 16, the third by 8, and
+the fourth stays at position 0 — then all four are combined with
+bitwise OR (Module 00a Section 4.2 — OR is the correct choice here
+specifically because each shifted octet occupies a completely
+NON-OVERLAPPING set of bit positions, so ORing them together simply
+combines them with no interference, exactly like assembling four puzzle
+pieces that each occupy their own distinct region).</p>
+
+<h3>8.2 — prefix_to_mask_int(), and the shift-then-mask pattern</h3>
+<pre>return (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF</pre>
+<p><code>0xFFFFFFFF</code> is 32 ones. Shifting it LEFT by
+<code>(32 - prefix)</code> positions pushes that many ones OFF the top
+end (conceptually) while filling the vacated LOW positions with zeros —
+producing exactly <code>prefix</code> leading ones followed by
+<code>(32-prefix)</code> trailing zeros, precisely the mask structure
+Module 00a's worked scenarios showed by hand. The trailing
+<code>& 0xFFFFFFFF</code> exists because PYTHON INTEGERS HAVE NO FIXED
+BIT WIDTH (unlike C's fixed 32-bit int, Module 00b's territory) — a
+left shift in Python can produce an arbitrarily large number that
+technically extends beyond 32 bits with leading zeros that Python
+doesn't automatically truncate; the explicit mask forces the result back
+down to exactly 32 meaningful bits, a genuinely important Python-specific
+correctness detail that a C implementation wouldn't need (fixed-width
+integer types truncate automatically via overflow).</p>
+
+<h2 id="sec9">9. Many Worked Scenarios — A Full Drill Set With Answers Shown</h2>
+
+<table>
+<tr><th>CIDR</th><th>Network</th><th>Broadcast</th><th>Usable hosts</th></tr>
+<tr><td>172.16.50.0/20</td><td>172.16.48.0</td><td>172.16.63.255</td><td>4094</td></tr>
+<tr><td>10.10.10.130/25</td><td>10.10.10.128</td><td>10.10.10.255</td><td>126</td></tr>
+<tr><td>203.0.113.200/28</td><td>203.0.113.192</td><td>203.0.113.207</td><td>14</td></tr>
+<tr><td>192.168.5.5/29</td><td>192.168.5.0</td><td>192.168.5.7</td><td>6</td></tr>
+<tr><td>8.8.8.0/23</td><td>8.8.8.0</td><td>8.8.9.255</td><td>510</td></tr>
+</table>
+<p>Cover the last 3 columns and derive each row yourself using Section
+7's magic-number technique before checking — this is exactly the
+self-testing discipline <code>subnet_quiz.py</code> automates
+indefinitely.</p>
+
+<h2 id="sec10">10. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: computing block size from the WRONG octet.</strong>
+The magic-number technique (Section 7) only directly applies within the
+octet where the "interesting" mask bits actually fall — a /20 mask's
+interesting bits are in the THIRD octet (172.16.<strong>48</strong>.0), not
+the fourth. Always identify which octet the prefix length actually lands
+in FIRST (prefix ÷ 8, rounded logic: /8-/15 falls in octet 2, /16-/23 in
+octet 3, /24-/31 in octet 4) before applying the magic-number shortcut
+to THAT specific octet.
+</div>
+
+<div class="scenario">
+<h4>Confusion: "why does 8.8.8.0/23 span into the NEXT octet's range (8.8.9.255), when /23 is close to a full /24?"</h4>
+<p>A /23 has ONE FEWER network bit than a /24 — meaning ONE MORE host
+bit, doubling the block size from 256 addresses (/24) to 512 addresses
+(/23). 512 addresses can't fit within a single third-octet value (which
+only has 256 possible values, 0-255) — it necessarily spans exactly TWO
+consecutive third-octet values (8 and 9 here), which is precisely why
+the broadcast address's third octet (9) differs from the network
+address's third octet (8). This is a genuinely common point of
+confusion for anyone used to /24-and-smaller subnets, where everything
+stays within one fixed third octet.</p>
+</div>
+
+<h2 id="sec11">11. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 05, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Compute network address, broadcast address, and usable host range
+for ANY CIDR notation, using EITHER full binary AND/OR math or the
+magic-number shortcut, and get the same answer both ways.</li>
+<li>Explain precisely why /31 is a genuine standards-sanctioned
+exception (RFC 3021) rather than a bug or inconsistency in the general
+formula.</li>
+<li>Explain what a wildcard mask is and why Cisco IOS ACL/OSPF syntax
+specifically requires it instead of a regular mask.</li>
+<li>Trace VLSM's largest-first packing algorithm completely by hand on
+a given set of host requirements, including the alignment step.</li>
+<li>Explain, with a counter-example, why largest-first VLSM packing
+produces less address fragmentation than smallest-first.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 05 assumes instant, confident subnetting as a given
+prerequisite, since routing decisions are fundamentally about comparing
+destination addresses against subnet boundaries, over and over, quickly.</p>
+
+</body>
+</html>

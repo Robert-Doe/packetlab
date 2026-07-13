@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 04 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 04 — Tutorial</h1>
+<p>Goal: stop treating subnetting as a memorized table lookup. By the end
+of this module you'll have built the calculator yourself, proven it
+correct against Python's own standard library, and drilled it into memory
+with an unlimited quiz generator.</p>
+
+<h2>Step 1 — run the calculator on a subnet you already know</h2>
+<p>Use the gateway/network from Module 01's dashboard (very likely
+something like <code>192.168.0.0/24</code>):</p>
+<pre>cd module-04-ip-addressing-subnetting
+python subnet_calc.py 192.168.0.0/24
+node subnet_calc.js 192.168.0.0/24</pre>
+<div class="expect"><strong>Expected:</strong> both print identical output
+— network <code>192.168.0.0</code>, broadcast <code>192.168.0.255</code>,
+254 usable hosts. This is almost certainly your actual home network's real
+capacity right now.</div>
+
+<h2>Step 2 — prove the math against the standard library</h2>
+<pre>python subnet_calc.py --self-test
+node subnet_calc.js --self-test 50</pre>
+<div class="expect"><strong>Expected:</strong> Python's self-test runs 500
+random CIDRs through both this file's manual bit math AND Python's own
+<code>ipaddress</code> module, and reports a full match. Node's self-test
+shells out to the Python file directly and cross-checks against it instead
+(Node has no bundled IP-address standard library to use as an oracle) —
+also expect a full match.</div>
+
+<h2>Step 3 — the quiz, honestly, until you stop missing questions</h2>
+<pre>python subnet_quiz.py 15</pre>
+<div class="note">Don't peek at <code>subnet_calc.py</code> while quizzing.
+The entire value of this exercise is doing the binary math in your head or
+on scratch paper faster than you can open the source file. Run it daily for
+a week — subnetting speed is a skill that decays fast without repetition,
+which is exactly why this module gives you an infinite generator instead of
+a fixed worksheet.</div>
+
+<h2>Step 4 — VLSM: subnetting a real address space for a real design</h2>
+<pre>python3 -c "
+from subnet_calc import vlsm_allocate
+reqs = [('Sales', 50), ('Engineering', 100), ('Guest WiFi', 20), ('Point-to-point link', 2)]
+for a in vlsm_allocate('192.168.1.0/24', reqs):
+    print(a['name'], '->', a['cidr'], f\"({a['usable_hosts']} usable)\")
+"</pre>
+<div class="expect"><strong>Expected:</strong> Engineering (needs the most
+hosts) gets allocated first and gets the largest block
+(<code>192.168.1.0/25</code>, 126 usable), then Sales, then Guest WiFi, then
+the point-to-point link gets squeezed into a <code>/30</code> at the end.
+Notice the blocks never overlap and each one starts on a boundary aligned
+to its own size — that alignment requirement is what Exercise 2 in Module 03
+was setting you up to appreciate.</div>
+
+<h2>Exercises before Module 05</h2>
+<ol>
+  <li><strong>Design your own home network's VLSM plan.</strong> Using your
+      real <code>/24</code> from Step 1, write a requirements list for how
+      YOU would actually segment your house: main devices, IoT/guest,
+      a small lab VLAN for later modules. Run it through
+      <code>vlsm_allocate</code> and sanity-check the output makes sense.</li>
+  <li><strong>Implement the RFC 3021 optimization.</strong> The VLSM
+      allocator currently gives every 2-host requirement a full
+      <code>/30</code> (4 addresses, 2 wasted). Modify
+      <code>vlsm_allocate</code>/<code>vlsmAllocate</code> so a
+      requirement of exactly 2 hosts uses a <code>/31</code> instead
+      (2 addresses, 0 wasted) — you already have the math in
+      <code>subnet_info</code>'s /31 special case from Module 04's
+      calculator itself.</li>
+  <li><strong>Score yourself.</strong> Run <code>subnet_quiz.py 20</code>
+      three days in a row and track your score and time. This is the one
+      exercise in the whole course that's pure repetition on purpose —
+      subnetting fluency is a timed-exam and technical-interview skill,
+      and it only comes from doing it enough times that you stop
+      consciously computing it.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 05:</strong> you should be able to subnet a /24 into
+VLSM blocks on paper, by hand, faster than typing the command. Module 05
+takes these subnets and asks the next question: once you have multiple
+separate networks, how does a packet find its way from one to another? That's
+routing — the mechanism a router uses to decide, for every packet, which
+interface gets it one hop closer to its destination.
+</div>
+
+</body>
+</html>
