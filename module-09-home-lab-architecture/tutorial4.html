@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 09 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 09 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+explain every hypervisor networking mode's exact packet path, articulate
+the precise THREAT MODEL behind this module's asymmetric firewall
+rules, and explain what Cox bridge mode actually disables at the
+protocol level, not just "makes your own router the real router."</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">Hypervisor networking modes, every packet path explained</a></li>
+<li><a href="#sec2">Why the plan is asymmetric — Main→Lab allowed, Lab→Main blocked</a></li>
+<li><a href="#sec3">pfSense/OPNsense's role — a real router AND a real firewall</a></li>
+<li><a href="#sec4">What Cox bridge mode actually disables, precisely</a></li>
+<li><a href="#sec5">Full code walkthrough — build_plan()'s VLSM reuse</a></li>
+<li><a href="#sec6">The IoT/Guest full-isolation loop, traced completely</a></li>
+<li><a href="#sec7">Many worked scenarios — designing your own segmentation</a></li>
+<li><a href="#sec8">Troubleshooting scenarios in a real virtual lab</a></li>
+<li><a href="#sec9">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. Hypervisor Networking Modes, Every Packet Path Explained</h2>
+
+<p>Every hypervisor (VirtualBox, VMware, Hyper-V) offers several
+distinct virtual networking modes for a VM's virtual network adapter —
+understanding EXACTLY where packets go in each mode is the actual
+prerequisite for building this module's lab correctly.</p>
+
+<table>
+<tr><th>Mode</th><th>Packet path</th><th>Use in this module</th></tr>
+<tr><td>NAT</td><td>VM's traffic is translated (Module 10's NAT mechanism) through the HOST machine's own network connection — the VM gets internet access, but is NOT directly reachable from other devices on your real LAN, and is NOT on the same broadcast domain as anything else</td><td>Not typically used for this module's inter-VM segmentation labs, since it isolates VMs from EACH OTHER too, not just from the outside</td></tr>
+<tr><td>Bridged</td><td>The VM's virtual adapter appears as if it were a REAL, separate physical device directly on your actual LAN — it can get its own DHCP lease from your REAL router and is directly reachable by other real devices</td><td>Genuinely risky for THIS module's purposes — a bridged lab VM is directly exposed to your real home network, defeating the entire "risk-free virtual lab" premise this module's own warning emphasizes</td></tr>
+<tr><td>Internal Network</td><td>Traffic stays ENTIRELY within the hypervisor itself, visible only to OTHER VMs explicitly attached to the SAME internal network — no path to the host OS or the real physical network AT ALL</td><td>Exactly what this module's isolated "Lab" and "IoT/Guest" virtual segments should use — genuinely, structurally impossible for traffic to leak onto your real home network by mistake</td></tr>
+<tr><td>Host-only</td><td>Similar to Internal Network, but ALSO allows communication with the HOST machine itself (useful for managing a VM from your host's own browser/SSH client)</td><td>Useful for the pfSense VM's management interface specifically — you need to reach ITS admin page from your host machine, which Internal Network alone wouldn't allow</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does this module insist on Internal Network / Host-only
+specifically, rather than the simpler Bridged mode, for the isolated
+lab segments?</strong> This is the ENTIRE safety mechanism behind
+"build the virtual lab first, before touching your real Cox connection"
+— Internal Network mode makes it STRUCTURALLY IMPOSSIBLE (not just
+policy-discouraged) for a mistake inside your virtual lab to affect your
+real home network's other devices, because the hypervisor itself never
+routes those packets anywhere outside its own internal switching fabric.
+Bridged mode would put your lab VMs on the SAME real broadcast domain as
+your actual devices — exactly the kind of accidental exposure this
+module's own safety framing (and this course's SAFETY.md generally)
+is designed to prevent by construction, not just by careful configuration.
+</div>
+
+<h2 id="sec2">2. Why The Plan Is Asymmetric — Main→Lab Allowed, Lab→Main Blocked</h2>
+
+<p><code>print_plan()</code>'s firewall rule outline is DELIBERATELY
+asymmetric, and the reasoning behind that asymmetry is a genuinely
+important, real security design principle worth internalizing fully,
+not just applying by rote.</p>
+
+<div class="scenario">
+<h4>The precise threat model behind this asymmetry</h4>
+<p><strong>ALLOW Main → Lab:</strong> you, sitting on your trusted Main
+network, need to be able to REACH your lab VMs to administer them — SSH
+in, open a web-based management interface, run this course's own lab
+servers and view their dashboards. This is a deliberate, TRUSTED,
+YOU-initiated action.</p>
+<p><strong>BLOCK Lab → Main:</strong> this is the actual security-relevant
+direction. This module's own lab environment INTENTIONALLY runs
+vulnerable, exploitable services (Module 16's vulnerability scanning
+targets, Module 20's malware analysis samples) — if one of your lab VMs
+were ever ACTUALLY compromised (by a real attacker, or by a mistake in
+your own testing), a Lab-to-Main rule being ALLOWED would let that
+compromised machine directly attack your real personal devices — your
+laptop, your phone, anything on Main. Blocking this direction means a
+compromised lab VM is CONTAINED — it can be as thoroughly "pwned" as an
+exercise requires, with zero ability to pivot onto your real, trusted
+devices.</p>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain the security
+principle behind allowing traffic in one direction across a network
+boundary while blocking the reverse direction, using this module's own
+Main/Lab rule as an example." This implements a form of TRUST
+ASYMMETRY / BLAST RADIUS CONTAINMENT: the boundary is deliberately
+NOT symmetric because the two zones don't carry EQUAL risk — Main is
+trusted, low-risk (real personal devices); Lab is explicitly
+HIGH-risk BY DESIGN (intentionally vulnerable practice targets). A
+symmetric rule (either both-allowed or both-blocked) would either expose
+Main to a compromised Lab machine (both-allowed) or prevent you from
+ever administering your own lab at all (both-blocked) — the asymmetric
+rule is the ONLY configuration that achieves BOTH legitimate goals
+(administer your lab AND contain any compromise) simultaneously.
+</div>
+
+<h2 id="sec3">3. pfSense/OPNsense's Role — A Real Router AND A Real Firewall</h2>
+
+<p>pfSense (and OPNsense, a fork sharing similar underlying architecture)
+is genuinely BOTH things at once, and understanding why a single device
+does both jobs matters: it performs Module 05's ROUTING function
+(forwarding packets between your different VLANs, each a separate
+network requiring inter-network forwarding) AND Module 10's FIREWALL/NAT
+function (deciding which forwarded traffic is actually ALLOWED, and
+translating your VLANs' private addresses for internet access) — the
+SAME physical/virtual device sits at the boundary of every VLAN
+specifically because both jobs (routing between networks, AND deciding
+what's allowed between them) naturally belong at that same boundary
+point.</p>
+
+<div class="why">
+<strong>Why can't a "dumb" switch alone provide this module's Lab/Main
+isolation, the way Module 03's VLAN-only isolation did?</strong> Module
+03's pure switch-level VLAN isolation (Section 5 there) prevents
+broadcast-domain crossing ENTIRELY — no traffic crosses AT ALL, in
+either direction. This module's design specifically needs ASYMMETRIC,
+SELECTIVE crossing (Main can reach Lab; Lab cannot reach Main) — a task
+requiring an actual ROUTING device making per-packet ALLOW/BLOCK
+decisions based on source/destination, exactly what a firewall (not a
+plain switch) is built to do. This is precisely why this module
+introduces pfSense specifically, rather than relying on VLANs alone —
+VLANs give you the broadcast-domain SEPARATION; the firewall gives you
+the SELECTIVE, asymmetric crossing rules on top of that separation.
+</div>
+
+<h2 id="sec4">4. What Cox Bridge Mode Actually Disables, Precisely</h2>
+
+<p>Your Cox-provided modem/router, by default, performs SEVERAL jobs
+simultaneously: cable modem functionality (translating between the
+cable company's own signal and Ethernet), NAT/routing (Module 10's
+territory), DHCP serving (Module 08's territory), and Wi-Fi access point
+functionality — ALL bundled into one device. "Bridge mode" is a
+configuration setting that DISABLES every one of these functions EXCEPT
+the pure cable-modem translation — turning the device into what it
+would be if it were JUST a modem, with no router/firewall/DHCP
+functionality of its own at all.</p>
+
+<div class="scenario">
+<h4>Scenario: why running TWO routers (Cox's + your own pfSense) without bridge mode causes real problems</h4>
+<p>Without bridge mode, Cox's device would perform ITS OWN NAT and DHCP
+— meaning your pfSense box would receive a PRIVATE address FROM Cox's
+router (not a real public IP), and would then need to perform its OWN
+SEPARATE NAT for everything behind IT — a "double NAT" configuration
+that genuinely causes real, practical problems: certain applications
+requiring INBOUND connections (some games, some VPN configurations,
+certain video calling scenarios) can break, because the necessary
+port-forwarding configuration would need to be correctly set up on BOTH
+routers' NAT layers, not just one — a real, common source of "why
+doesn't this work" home networking frustration. Bridge mode eliminates
+this entirely: Cox's device stops doing NAT/routing altogether, and
+YOUR pfSense box receives the real public IP directly, becoming the
+ONLY device performing NAT — a single, cleanly-configurable NAT layer
+instead of two nested ones.</p>
+</div>
+
+<div class="why">
+<strong>Why does this course frame bridge mode as an OPTIONAL, advanced,
+carefully-gated step (Step 4, explicitly marked "optional, advanced")
+rather than a required part of the module?</strong> Because it
+genuinely restructures your household's actual internet connectivity —
+if done incorrectly, it can leave your WHOLE HOUSE without internet
+access until corrected, a real, meaningful risk to everyone in your home
+who depends on that connection, not just to your own testing. This is
+precisely the same category of caution this course applies to any
+action affecting shared, real infrastructure beyond your own isolated
+lab environment (directly echoing the safety principles in this
+session's own system-level guidance about hard-to-reverse, shared-impact
+actions) — the virtual lab (Steps 1-3) achieves the SAME learning
+outcome (real segmentation, real firewall rules, real isolation
+verification) with ZERO risk to your household's actual connectivity,
+which is exactly why it's positioned as the required path and bridge
+mode as the optional one.
+</div>
+
+<h2 id="sec5">5. Full Code Walkthrough — build_plan()'s VLSM Reuse</h2>
+
+<pre>ordered = sorted(segments, key=lambda s: s[2], reverse=True)
+cursor = base_network
+for name, vlan_id, host_count in ordered:
+    prefix = smallest_prefix_for(host_count)
+    ...</pre>
+<p>This is, quite literally, Module 04's <code>vlsm_allocate()</code>
+algorithm (largest-requirement-first packing, Module 04 Section 5-6),
+reimplemented here for a REAL design decision rather than a synthetic
+exercise. The exact same reasoning applies: sorting by host count
+DESCENDING before allocating (Module 04 Section 6's proof by
+counter-example) minimizes wasted, fragmented address space across your
+real home network's segmentation plan — this module doesn't invent a
+new algorithm; it APPLIES an already-mastered one to a genuinely
+practical problem, exactly matching this course's own recurring pattern
+of building real skills that transfer directly (Module 21's CTF
+methodology makes this SAME "recognize and reapply a known technique"
+principle explicit as its own topic).</p>
+
+<h2 id="sec6">6. The IoT/Guest Full-Isolation Loop, Traced Completely</h2>
+
+<pre>if "IoT/Guest" in by_name:
+    for other in plan:
+        if other["name"] != "IoT/Guest":
+            print(f"  BLOCK  {by_name['IoT/Guest']['cidr']} -> {other['cidr']} ...")
+    print(f"  ALLOW  {by_name['IoT/Guest']['cidr']} -> 0.0.0.0/0 ...")</pre>
+<div class="scenario">
+<h4>Why IoT/Guest gets a DIFFERENT isolation pattern than Lab</h4>
+<p>Notice this is NOT asymmetric the way Main/Lab is — IoT/Guest is
+blocked from EVERY OTHER internal segment (both Main AND Lab), with NO
+exception allowing inbound administration from Main the way Lab
+permits. This reflects a genuinely different real threat model: consumer
+IoT devices (smart plugs, cameras, guest phones) have a well-documented,
+real-world history of weak security and are not something you typically
+need to REACH FROM your trusted devices for administration the way you
+need to reach your OWN lab VMs — the correct, complete isolation here is
+"can reach the internet, cannot reach anything else on your network, and
+nothing else needs to reach it either" — a stricter, fully-isolated
+pattern rather than Lab's asymmetric one, because the LEGITIMATE
+use case (a smart bulb just needs internet access to phone home to its
+cloud service) simply doesn't require any inbound reachability from your
+trusted devices at all.</p>
+</div>
+
+<h2 id="sec7">7. Many Worked Scenarios — Designing Your Own Segmentation</h2>
+
+<div class="scenario">
+<h4>Worked scenario: adding a 4th "Cameras/NVR" segment (this module's own Exercise 2)</h4>
+<pre>segments = [
+    ("Main", 10, 20),
+    ("IoT/Guest", 20, 30),
+    ("Cameras", 25, 8),      # new segment -- isolated even from IoT/Guest
+    ("Lab", 30, 10),
+]
+
+Sorted largest-first: IoT/Guest(30), Main(20), Lab(10), Cameras(8)
+
+Applying smallest_prefix_for() to each:
+  IoT/Guest needs 30 -> needed=32 -> /27 (32 addresses, 30 usable)
+  Main needs 20 -> needed=22 -> /27 (32 addresses, 30 usable)
+  Lab needs 10 -> needed=12 -> /28 (16 addresses, 14 usable)
+  Cameras needs 8 -> needed=10 -> /28 (16 addresses, 14 usable)
+
+Why isolate Cameras even from IoT/Guest specifically? A compromised
+smart-plug (IoT/Guest) pivoting to control or view YOUR SECURITY
+CAMERAS is a genuinely more severe consequence than a compromised
+smart-plug alone -- cameras warrant their OWN isolation boundary, not
+just bundling into the same "other stuff" category as general IoT,
+precisely the kind of threat-model-driven segmentation decision this
+module's own design methodology teaches you to reason through yourself,
+rather than following a fixed template blindly.</pre>
+</div>
+
+<h2 id="sec8">8. Troubleshooting Scenarios In A Real Virtual Lab</h2>
+
+<div class="scenario">
+<h4>Scenario: your client VM on "Main" can't reach the internet at all, even before any firewall rules are added</h4>
+<p>Before suspecting firewall rules, verify the BASICS first, in order
+(the same progressive diagnostic discipline as Module 01 Section 8.3):
+confirm the client VM's virtual network adapter is attached to the
+CORRECT virtual network in your hypervisor's VM settings (a surprisingly
+common mistake — attaching to the wrong internal network entirely);
+confirm the client VM actually received a DHCP lease from pfSense
+(Module 08's DORA mechanism, now running for real) via its own IP
+configuration; confirm pfSense's OWN "WAN" interface (the one facing
+your real internet connection, likely in NAT mode per Section 1) has
+internet access itself before troubleshooting anything downstream of it.</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: your Lab → Main block rule doesn't seem to be working — pings still succeed</h4>
+<p>The single most common cause: FIREWALL RULE ORDER. Most firewalls,
+pfSense included, evaluate rules TOP TO BOTTOM and stop at the FIRST
+match (Module 10 covers this precisely) — if a broader ALLOW rule
+(even an accidentally-too-permissive default one) appears ABOVE your
+specific BLOCK rule in the rule list, the ALLOW rule wins and your BLOCK
+rule never even gets evaluated. Always check rule ORDER, not just rule
+EXISTENCE, when a rule doesn't seem to be taking effect — this exact
+gotcha is worth fully internalizing now, since Module 10 builds directly
+on this rule-evaluation-order concept.</p>
+</div>
+
+<h2 id="sec9">9. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 10, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Explain every hypervisor networking mode's exact packet path (NAT,
+Bridged, Internal, Host-only) and justify which one belongs on each of
+this module's virtual segments.</li>
+<li>Articulate the precise threat model behind an asymmetric firewall
+rule (Main→Lab allowed, Lab→Main blocked) — not just recite the rule.</li>
+<li>Explain why pfSense needs to perform BOTH routing and firewalling,
+and why VLANs alone (Module 03) can't achieve this module's asymmetric
+isolation goals.</li>
+<li>Explain precisely what Cox bridge mode disables, and why running two
+NAT layers (double NAT) without it causes real, practical problems.</li>
+<li>Design a segmentation plan for a NEW scenario (a 4th VLAN, a
+different host count) using this module's own VLSM-based packing logic
+by hand.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 10 goes deep into EXACTLY how pfSense's firewall
+makes its allow/block decisions (NAT and stateful filtering, traced
+packet by packet), and assumes you already understand WHY those rules
+exist at the design level from this module.</p>
+
+</body>
+</html>

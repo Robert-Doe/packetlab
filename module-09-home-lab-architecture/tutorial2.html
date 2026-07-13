@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 09 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 09 — Deep Theory: Hypervisor Networking and Lab Architecture</h1>
+
+<h2>1. Command/Concept-by-Concept: Hypervisor Network Modes</h2>
+
+<p><code>virtual_lab_setup_guide.md</code> asks you to create three
+DIFFERENT kinds of virtual networks in your hypervisor. Understanding
+exactly what each one does — and doesn't — is essential before you can
+reason about your lab's actual security boundaries.</p>
+
+<h3>NAT Network (used for WAN)</h3>
+<p><strong>What it does:</strong> gives VMs attached to it outbound
+internet access by routing their traffic through the HOST machine's own
+network connection, with the hypervisor performing NAT (Module 10's exact
+mechanism) to translate VM-internal addresses to the host's real address
+for anything leaving the VM. <strong>What it does NOT do:</strong> allow
+unsolicited inbound connections FROM the internet TO the VM (same
+"unsolicited inbound is dropped by default" property Module 10 covers for
+real home routers) — this is precisely why this mode is safe to use as
+your lab's simulated WAN without exposing anything to the real internet.</p>
+
+<h3>Internal Network (used for Main/IoT/Lab segments)</h3>
+<p><strong>What it does:</strong> creates an ISOLATED virtual switch that
+ONLY VMs explicitly attached to it can reach — no connection to your real
+host network, no connection to the internet, no connection to any other
+virtual network unless a VM (like your pfSense/OPNsense router) is
+DELIBERATELY attached to more than one network and configured to route
+between them. This is the hypervisor-level equivalent of Module 03's
+VLAN isolation — a completely separate broadcast domain, enforced by the
+hypervisor's own virtual switching, before any firewall rule is even
+evaluated.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain why attaching a
+client VM to an 'Internal Network' provides STRONGER isolation, by
+default, than attaching it to a 'Bridged' network protected only by a
+software firewall rule." An Internal Network is isolated at the
+VIRTUAL SWITCHING layer — there is no path at all for traffic to reach
+outside VMs attached to that specific virtual network, regardless of any
+firewall rule (or its absence). A Bridged network instead places the VM
+directly on the SAME broadcast domain as your real host network, relying
+ENTIRELY on firewall rules (which could be missing, misconfigured, or
+bypassed by a bug) to prevent unwanted access. Internal Network isolation
+is structural (nothing to misconfigure into a leak); firewall-based
+isolation is a policy decision that could fail.
+</div>
+
+<h2>2. Why pfSense/OPNsense Specifically (BSD-Based Firewalls)</h2>
+<p>Both are built on FreeBSD and its <code>pf</code> (packet filter)
+firewall — a mature, widely-audited, stateful firewall subsystem (also
+used, in variants, by macOS, and historically OpenBSD, where <code>pf</code>
+originated). Choosing an established, widely-deployed open-source firewall
+distribution rather than building router/firewall functionality on a
+general-purpose Linux install from scratch gives you a proper web admin
+UI, a maintained package ecosystem (VPN, IDS/IPS, DNS packages installable
+directly), and — critically for a security-focused education — battle-tested,
+professionally audited firewall logic underneath, rather than
+hand-assembled iptables rules more prone to gaps.</p>
+
+<h2>3. The Asymmetric Trust Design Pattern, Formalized</h2>
+<p><code>lab_plan_generator.py</code>'s firewall rule outline
+(<code>ALLOW Main → Lab</code>, <code>BLOCK Lab → Main</code>) is a
+specific instance of a general security design principle called
+"least privilege applied directionally" — each zone is granted the
+MINIMUM access it needs to accomplish its purpose, and NOTHING is granted
+symmetrically by default. This pattern generalizes far beyond home labs:
+it's the same underlying logic behind DMZ (demilitarized zone) network
+architecture in enterprise networks (a public-facing web server zone can
+be reached from the internet, but the web server zone itself cannot
+freely reach the internal corporate network) and behind Zero Trust
+network design (Tier 7's BeyondCorp/SASE concepts) more broadly.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Hypervisor network isolation modes</td><td>Module 17's cloud VPC subnet isolation (a very similar concept, different vendor terminology)</td></tr>
+<tr><td>Structural vs. policy-based isolation</td><td>General security architecture reasoning for the rest of this course</td></tr>
+<tr><td>Asymmetric trust / least privilege by direction</td><td>Module 17's security group design, DMZ architecture generally</td></tr>
+<tr><td>pf/stateful firewall foundations</td><td>Module 10's deep NAT/firewall mechanics</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

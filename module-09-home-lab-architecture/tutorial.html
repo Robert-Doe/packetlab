@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 09 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  .warn { background: #fdecec; border-left: 4px solid #c0392b; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 09 — Tutorial</h1>
+<p>Goal: design a real segmentation plan for your actual home network, then
+implement it in a risk-free virtual lab first. Read
+<code>home_lab_design.md</code> in full before starting.</p>
+
+<div class="warn">
+<strong>This module is different from every one before it.</strong>
+Modules 01-08 ran entirely in a sandbox — a mistake cost you a restart.
+This module's optional production path (<code>cox_bridge_mode_guide.md</code>)
+touches your household's actual internet connection. Do the virtual lab
+first. Don't attempt the production path unless you specifically want your
+home network restructured, and only after you've read the safety notes in
+that file in full.
+</div>
+
+<h2>Step 1 — generate your real segmentation plan</h2>
+<pre>cd module-09-home-lab-architecture
+python lab_plan_generator.py 192.168.0.0/24</pre>
+<p>Replace <code>192.168.0.0/24</code> with your own real home subnet if
+different — check Module 01's dashboard output if you don't remember it.</p>
+<div class="expect"><strong>Expected:</strong> a 3-VLAN plan (Main,
+IoT/Guest, Lab) sized to the host counts hardcoded in the script (20/30/10
+— edit these in <code>main()</code> to match your actual device count),
+plus a firewall rule outline expressing the isolation goals from
+<code>home_lab_design.md</code>. Confirm none of the three CIDR blocks
+overlap — this is the same VLSM packing logic from Module 04, applied to a
+plan you might actually use.</div>
+
+<h2>Step 2 — build the virtual lab</h2>
+<p>Follow <code>virtual_lab_setup_guide.md</code> completely. This is
+entirely contained inside your hypervisor — no risk to your real network at
+any point.</p>
+<div class="expect"><strong>Expected outcome:</strong> a working
+pfSense/OPNsense VM with 3 virtual networks attached, a client VM on the
+"Main" network that can reach the internet through the firewall's NAT, and
+at least one firewall rule you wrote yourself (blocking Lab → Main, per
+Step 1's plan) that you've verified works by trying to ping across it.</div>
+
+<h2>Step 3 — verify the isolation rule the way Module 03 taught you to think about it</h2>
+<p>From a client VM on your "Lab" virtual network, try to ping a client on
+"Main." It should fail. From "Main," ping "Lab" (if you allowed that
+direction) — it should succeed. This is the exact same broadcast-domain
+isolation concept `switch_sim.py` demonstrated in software back in Module
+03 — except now a real (if virtual) firewall is the thing enforcing it, with
+actual stateful rule evaluation instead of just VLAN-tag flood-avoidance.</p>
+
+<h2>Step 4 (optional, advanced) — production bridge mode</h2>
+<p>Only if you want to: read <code>cox_bridge_mode_guide.md</code> in
+full, in particular the "before you start" checklist, before touching your
+Cox gateway's admin page.</p>
+
+<h2>Exercises before Module 10</h2>
+<ol>
+  <li><strong>Resize the plan for your real device count.</strong> Count
+      your actual devices per category (personal, IoT/guest, lab) and edit
+      <code>lab_plan_generator.py</code>'s <code>segments</code> list to
+      match. Re-run and confirm the block sizes make sense.</li>
+  <li><strong>Add a 4th segment.</strong> Many households want a separate
+      "Cameras/NVR" VLAN, isolated even from IoT/Guest. Add it to both the
+      Python and JS generator and update the firewall rule outline logic
+      to include it in the IoT/Guest-style full isolation loop.</li>
+  <li><strong>Write the actual pfSense rules.</strong> Take Step 1's
+      firewall rule outline and translate each ALLOW/BLOCK line into an
+      actual pfSense "Firewall → Rules" entry on your virtual lab's Lab
+      and IoT/Guest interfaces. Confirm with a real ping test that each
+      rule does what its outline comment says.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 10:</strong> you should have a working virtual lab
+with at least 2 isolated network segments and one enforced firewall rule
+between them. Module 10 goes deeper into exactly how that firewall makes
+its allow/block decisions — NAT and stateful filtering, traced packet by
+packet the way Module 05 traced routing decisions.
+</div>
+
+</body>
+</html>
