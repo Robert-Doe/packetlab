@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00c Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+  nav a { margin-right: 16px; }
+</style>
+</head>
+<body>
+
+<nav><a href="headfirst.md">Concepts</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 00c — Tutorial</h1>
+<p>Goal: real filesystem permissions, a real systemd service you bring up
+and tear down yourself, and real (but non-destructive) package management
+— on a genuine Linux system, not a simulation.</p>
+
+<div class="note">
+<strong>You need a real Linux shell.</strong> WSL Ubuntu (Windows), any
+real Linux machine, or your Module 09 lab VM all work. Every script below
+was tested in WSL Ubuntu with systemd running as PID 1.
+</div>
+
+<h2>Step 1 — filesystem hierarchy and permissions, proven not asserted</h2>
+<pre>cd module-00c-linux-systems-administration
+chmod +x filesystem_and_permissions.sh
+./filesystem_and_permissions.sh</pre>
+<div class="expect"><strong>Expected (confirmed during this module's
+build):</strong> a new file defaults to <code>644</code> under umask
+<code>022</code>; <code>chmod 755</code> and the equivalent symbolic form
+produce identical results; a script WITHOUT execute permission genuinely
+fails with "Permission denied" when you try to run it, and succeeds the
+instant you <code>chmod +x</code> it; and <code>/tmp</code>'s real
+permissions show <code>1777</code> — the sticky bit, proven on your own
+live system.</div>
+
+<h2>Step 2 — a real systemd service, start to finish</h2>
+<pre>cd systemd_service_demo
+mkdir -p ~/.config/systemd/user ~/module00c-demo
+cp heartbeat.sh ~/module00c-demo/
+chmod +x ~/module00c-demo/heartbeat.sh
+cp heartbeat.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user start heartbeat.service</pre>
+<div class="expect"><strong>Expected:</strong> <code>systemctl --user status heartbeat.service</code>
+shows <code>Active: active (running)</code> with a real PID. Confirmed
+during this module's build — the service printed a heartbeat every 2
+seconds, and every line appeared automatically in
+<code>journalctl --user -u heartbeat.service</code> with zero explicit
+logging code, because systemd captures a unit's stdout/stderr into the
+journal by default.</div>
+<pre>systemctl --user enable heartbeat.service   # start automatically at login
+systemctl --user is-enabled heartbeat.service
+systemctl --user stop heartbeat.service
+systemctl --user disable heartbeat.service</pre>
+<div class="expect">Confirmed during this module's build: each command's
+state change is immediately reflected in <code>is-enabled</code>/
+<code>is-active</code> — <code>enabled</code> → <code>disabled</code>,
+<code>active</code> → <code>inactive</code>.</div>
+<pre># Clean up when done
+rm -f ~/.config/systemd/user/heartbeat.service
+rm -rf ~/module00c-demo
+systemctl --user daemon-reload</pre>
+
+<h2>Step 3 — package management, safely (nothing gets installed)</h2>
+<pre>cd ..
+chmod +x package_management.sh
+./package_management.sh</pre>
+<div class="expect"><strong>Expected:</strong> real installed-package
+listings, real dependency metadata for <code>curl</code>, confirmation of
+which package owns <code>/bin/bash</code>, and a <strong>simulated</strong>
+install of <code>cowsay</code> (<code>apt-get install --simulate</code>)
+showing exactly what would happen — confirmed during this module's build
+with <code>which cowsay</code> afterward, proving nothing was actually
+installed.</div>
+
+<h2>Exercises before Module 01</h2>
+<ol>
+  <li><strong>Add a second unit that depends on the first.</strong>
+      Create a <code>heartbeat-watcher.service</code> with
+      <code>After=heartbeat.service</code> in its <code>[Unit]</code>
+      section, and confirm via <code>systemctl --user list-dependencies</code>
+      that systemd understands the ordering.</li>
+  <li><strong>Find every SUID binary on your system.</strong>
+      <code>find / -perm -4000 -type f 2>/dev/null</code> — research what
+      the setuid bit does (a program runs with its OWNER's privileges,
+      not the invoking user's) and why this is a classic privilege-escalation
+      target if a setuid binary has a vulnerability.</li>
+  <li><strong>Read tutorial2.html and tutorial3.html fully.</strong></li>
+</ol>
+
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00c — Exam Practice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.6; color: #1a1a1a; }
+  h1 { border-bottom: 4px solid #222; padding-bottom: 10px; }
+  details { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  summary { font-weight: 600; cursor: pointer; }
+  .answer { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; font-family: "SFMono-Regular", Consolas, monospace; }
+  nav a { margin-right: 16px; }
+  .instructions { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">← Deep Theory</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 00c — Exam Practice</h1>
+<div class="instructions">Answer out loud before revealing each answer.</div>
+
+<details>
+<summary>Q1. What does chmod 644 mean, decomposed bit by bit?</summary>
+<div class="answer">
+<strong>A:</strong> Owner=6 (rw-, read+write, no execute: 4+2+0), group=4
+(r--, read only: 4+0+0), other=4 (r--, read only). This is the standard
+default for ordinary (non-executable) files.
+</div>
+</details>
+
+<details>
+<summary>Q2. Explain the difference between a "hard dependency" and an "ordering constraint" in systemd, and give an example of when you'd want ONLY ordering without a hard dependency.</summary>
+<div class="answer">
+<strong>A:</strong> Requires= is a hard dependency -- if the required
+unit fails, the dependent unit is stopped too. After=/Before= is pure
+ordering -- it only affects the SEQUENCE in which units start if both
+are starting, with no implication that one failing affects the other.
+Example: a logging/monitoring service might declare
+`After=network.target` (start after networking is up, since it needs to
+ship logs somewhere) without `Requires=network.target` (the service
+should still start and run even if networking is temporarily down --
+it just shouldn't START before networking has had a chance to come up).
+</div>
+</details>
+
+<details>
+<summary>Q3. What is the setuid bit, and why is it a classic privilege-escalation target for a security auditor to review?</summary>
+<div class="answer">
+<strong>A:</strong> The setuid bit causes an executable to run with its
+FILE OWNER's privileges (specifically, effective UID) rather than the
+invoking user's, regardless of who actually runs it. A setuid-root binary
+therefore runs as root no matter who invokes it -- if it contains any
+exploitable vulnerability an unprivileged user can trigger, that user
+inherits root's privileges through the exploit. Auditors specifically
+enumerate all setuid binaries and verify each is necessary and free of
+known vulnerabilities, because the "blast radius" of a bug in a setuid
+binary is disproportionately severe compared to an equivalent bug in an
+ordinary, non-privileged program.
+</div>
+</details>
+
+<details>
+<summary>Q4. Why does /tmp's sticky bit matter on a genuinely multi-user system, even though /tmp is world-writable?</summary>
+<div class="answer">
+<strong>A:</strong> World-writable alone would let ANY user delete or
+rename files OTHER users placed in /tmp, since ordinary write permission
+on a directory governs the ability to modify its contents including
+removing entries. The sticky bit adds a specific additional restriction:
+only a file's owner (or root) may delete/rename it, even though the
+directory itself remains writable by everyone -- preventing one user from
+maliciously or accidentally deleting another user's temporary files.
+</div>
+</details>
+
+<details>
+<summary>Q5. Explain real UID vs. effective UID, and how this distinction is what actually makes setuid execution work.</summary>
+<div class="answer">
+<strong>A:</strong> The real UID identifies who actually invoked the
+process (for accounting/logging purposes); the effective UID is what the
+kernel actually checks for most permission decisions during that
+process's execution. Normally these are identical. When executing a
+setuid binary, the effective UID becomes the FILE OWNER's UID while the
+real UID remains the invoking user's -- the kernel's permission checks
+(which use effective UID) then treat the process as if it were running
+as the file's owner, even though the real UID (and thus, e.g., the
+process's owner as shown in some contexts) still reflects who actually
+launched it.
+</div>
+</details>
+
+<details>
+<summary>Q6. What's the actual technical difference between a Linux container (Docker) and a virtual machine, in terms of what each one isolates?</summary>
+<div class="answer">
+<strong>A:</strong> A VM virtualizes hardware -- each VM runs its OWN
+complete kernel and OS, isolated by a hypervisor operating below the OS
+layer entirely. A container shares the HOST's kernel -- isolation is
+achieved via kernel namespaces (separate views of process IDs, network
+interfaces, mount points, etc. per container) and cgroups (resource
+limits), not by running a separate kernel. This is why containers are
+lighter-weight and start faster than VMs, but also why a kernel-level
+vulnerability is a more direct "container escape" risk than an equivalent
+VM-escape vulnerability would be for a hypervisor -- the container's
+isolation boundary is enforced entirely within the one shared kernel.
+</div>
+</details>
+
+<details>
+<summary>Q7. A colleague argues "apt-get install --simulate is just a UI convenience, there's no real reason to use it before a real install." Evaluate this claim.</summary>
+<div class="answer">
+<strong>A:</strong> The claim understates its value. --simulate resolves
+the FULL real dependency graph (exactly what a real install would compute)
+without executing any of the actual file operations -- it surfaces
+exactly which NEW packages would be pulled in as dependencies, which
+existing packages might be upgraded or removed, and any conflicts, before
+you commit to any of it. On a production system, or any system where
+disk space, package versions, or unexpected removals matter, reviewing
+this plan before committing is a real risk-reduction practice, directly
+analogous to reviewing a `terraform plan` before `terraform apply`
+(Module 17) -- not merely a UI nicety.
+</div>
+</details>
+
+<details>
+<summary>Q8. Why did this module choose systemctl --user over a system-wide systemd unit, and what's the actual security-relevant tradeoff?</summary>
+<div class="answer">
+<strong>A:</strong> A user unit requires no elevated privilege to install
+or manage, runs entirely within the invoking user's own permission
+boundary, and cannot bind privileged (sub-1024) ports or access files the
+user itself couldn't otherwise access. A system unit requires root,
+persists regardless of user login state, and can access system-wide
+resources and privileged ports. The tradeoff is capability vs. privilege
+scope: a system unit can do more (run at boot before any user logs in,
+bind privileged ports) but requires trusting it with root-equivalent
+install/management privileges; a user unit is scoped to exactly what that
+one user could already do, which is the least-privilege-appropriate
+choice for anything that doesn't specifically need system-wide/pre-login
+capability.
+</div>
+</details>
+
+</body>
+</html>

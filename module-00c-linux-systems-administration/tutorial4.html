@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00c — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 00c — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end, you should be able to
+compute any chmod octal value from a plain-English permission
+description without a lookup table, explain precisely what a systemd
+unit file's every line does, and reason confidently about why a
+particular file's permissions do or don't allow a particular action.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">The Linux filesystem hierarchy, from zero</a></li>
+<li><a href="#sec2">Permissions and chmod — the full bit-math, many scenarios</a></li>
+<li><a href="#sec3">umask — why new files aren't born at 777</a></li>
+<li><a href="#sec4">Special bits — setuid, setgid, sticky, fully explained</a></li>
+<li><a href="#sec5">Real UID vs. effective UID — the mechanism setuid depends on</a></li>
+<li><a href="#sec6">systemd units, line by line — what every directive does</a></li>
+<li><a href="#sec7">The full systemd service lifecycle, narrated</a></li>
+<li><a href="#sec8">Package management — apt, dpkg, and dependency resolution</a></li>
+<li><a href="#sec9">Full code walkthrough — filesystem_and_permissions.sh</a></li>
+<li><a href="#sec10">Full code walkthrough — package_management.sh</a></li>
+<li><a href="#sec11">Troubleshooting scenarios you will actually hit</a></li>
+<li><a href="#sec12">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. The Linux Filesystem Hierarchy, From Zero</h2>
+
+<p>Unlike Windows (where each disk gets its own drive letter, C:\, D:\,
+etc.), Linux has exactly ONE unified directory tree, starting at
+<code>/</code> (the "root" directory — unrelated to the "root" user,
+though both share the name). Every disk, partition, network share, or
+removable device gets MOUNTED (attached) at some point within this
+single tree, rather than getting its own separate namespace.</p>
+
+<table>
+<tr><th>Path</th><th>What actually lives there</th></tr>
+<tr><td><code>/etc</code></td><td>System-WIDE configuration files (not per-user) — e.g., <code>/etc/resolv.conf</code>, which Module 01's own code reads directly for DNS server configuration on Linux</td></tr>
+<tr><td><code>/home</code></td><td>Per-user home directories — <code>/home/yourname</code>, roughly analogous to <code>C:\Users\yourname</code> on Windows</td></tr>
+<tr><td><code>/var</code></td><td>"Variable" data — data that changes constantly during normal operation: logs (<code>/var/log</code>), mail spools, caches</td></tr>
+<tr><td><code>/usr/bin</code></td><td>Where most installed programs actually live — historically distinct from <code>/bin</code> (essential system binaries needed even in single-user recovery mode), though modern distributions commonly symlink <code>/bin</code> to <code>/usr/bin</code>, merging the distinction in practice</td></tr>
+<tr><td><code>/proc</code></td><td>NOT a real, disk-backed filesystem at all — a live, synthetic window into kernel and process state, generated on the fly the instant you read it. <code>cat /proc/cpuinfo</code> doesn't read a file that "exists" on disk; the kernel generates that text dynamically, right when you ask.</td></tr>
+<tr><td><code>/dev</code></td><td>Device files — <code>/dev/null</code> (a bottomless pit that discards anything written to it and returns EOF immediately if read), <code>/dev/zero</code> (an infinite stream of zero bytes), <code>/dev/sda</code> (a real disk device) — Linux's famous "everything is a file" philosophy made literal: even physical hardware devices are interacted with through the same read/write file interface as ordinary files</td></tr>
+<tr><td><code>/tmp</code></td><td>Temporary files, world-writable — but protected by the sticky bit (Section 4.3), a genuinely important nuance</td></tr>
+</table>
+
+<div class="brain">
+<strong>Brain power:</strong> why does <code>/proc/cpuinfo</code>
+"exist" as a readable file with real content, despite not being stored
+anywhere on disk? Because Linux's virtual filesystem layer doesn't
+actually require a file's content to come from a physical storage
+device — <code>/proc</code> is backed by a special filesystem DRIVER
+that, whenever the kernel receives a read request for a file under
+<code>/proc</code>, generates the appropriate content on the spot by
+querying live kernel data structures, then discards it. This is exactly
+why <code>/proc/cpuinfo</code>'s content can change between two
+consecutive reads (if CPU frequency scaling changes, for instance) —
+there's no cached "file" sitting there; every read is a fresh query.
+</div>
+
+<h2 id="sec2">2. Permissions and chmod — The Full Bit-Math, Many Scenarios</h2>
+
+<h3>2.1 — The three permission TRIOS, and what each bit means</h3>
+<p>Every file/directory has permissions for exactly THREE categories of
+user: the OWNER, the GROUP, and OTHER (everyone else). Within each
+category, exactly THREE bits control read (r), write (w), and execute
+(x) — this directly reuses Module 00a's binary/bitwise material: each
+trio is quite literally a 3-bit binary number, where
+read=4 (binary 100), write=2 (binary 010), execute=1 (binary 001), and
+you SUM the bits for whichever permissions you want to grant.</p>
+
+<div class="scenario">
+<h4>Worked scenario: deriving 755 from a plain-English description, completely by hand</h4>
+<p>Requirement: "the owner can read, write, and execute this file; the
+group and everyone else can only read and execute it (not write)."</p>
+<pre>Owner:  read + write + execute = 4 + 2 + 1 = 7
+Group:  read + execute (no write) = 4 + 0 + 1 = 5
+Other:  read + execute (no write) = 4 + 0 + 1 = 5
+
+Result: 755</pre>
+<p>This is EXACTLY the value this module's own
+<code>filesystem_and_permissions.sh</code> applies via
+<code>chmod 755 testfile.txt</code>, and its symbolic-notation
+equivalent, <code>chmod u=rwx,g=rx,o=rx</code>, says the identical
+thing in a different notation — the script confirms both produce
+IDENTICAL results by checking <code>stat</code>'s output after each.</p>
+</div>
+
+<div class="scenario">
+<h4>Worked scenario: a private file only the owner can touch at all</h4>
+<pre>Owner: read + write (no execute, it's data not a program) = 4 + 2 = 6
+Group: nothing at all = 0
+Other: nothing at all = 0
+
+Result: 600  (chmod 600 secrets.txt -- a real, extremely common pattern
+              for private key files, e.g. SSH's ~/.ssh/id_rsa)</pre>
+</div>
+
+<div class="scenario">
+<h4>Worked scenario: a shared script everyone on the system can run but only the owner can edit</h4>
+<pre>Owner: read + write + execute = 4+2+1 = 7
+Group: read + execute (no write) = 4+0+1 = 5
+Other: read + execute (no write) = 4+0+1 = 5
+
+Result: 755 -- same value as the first scenario, because "everyone can
+              read/run, only the owner can modify" is a genuinely
+              common pattern, appearing identically for both data files
+              intended for wide reading and executable scripts intended
+              for wide running.</pre>
+</div>
+
+<h3>2.2 — Reading a permission string like <code>-rwxr-xr-x</code> directly</h3>
+<pre>-rwxr-xr-x
+│└┬┘└┬┘└┬┘
+│ │  │  └── OTHER: r-x (read + execute, no write)
+│ │  └───── GROUP: r-x (read + execute, no write)
+│ └──────── OWNER: rwx (read + write + execute)
+└────────── FILE TYPE: '-' means regular file
+             ('d' would mean directory, 'l' would mean symlink)</pre>
+<p>This is exactly <code>ls -l</code>'s output format, and exactly what
+<code>stat -c '%A (%a)'</code> (used throughout this module's own
+scripts) prints in its first field — the symbolic string ALWAYS has
+this same fixed 10-character structure: 1 type character, then three
+groups of 3 permission characters.</p>
+
+<h3>2.3 — Why execute permission on a DIRECTORY means something completely different than on a file</h3>
+<div class="pitfall">
+<strong>Common confusion: "execute permission on a directory" doesn't mean "run the directory."</strong>
+For a regular FILE, execute permission means "this file may be run as a
+program/script." For a DIRECTORY, execute permission means something
+entirely different: "you may ENTER this directory and access items
+INSIDE it by name" (technically: traverse it as part of a path). A
+directory with read but NOT execute permission lets you LIST its
+contents' names (<code>ls</code>) but NOT actually access any specific
+file inside by path — a genuinely confusing distinction until you've
+hit it directly. This is why you'll commonly see directories with
+permission <code>755</code> or <code>750</code> (execute bit set) even
+though "running a directory" makes no literal sense — the execute bit is
+doing a completely different job than it does on a file.
+</div>
+
+<h2 id="sec3">3. umask — Why New Files Aren't Born At 777</h2>
+
+<p>When a program creates a new file, it typically requests a MAXIMUM
+starting permission — conventionally 666 (rw-rw-rw-, no execute — since
+"newly created data files should be runnable by default" would be a
+strange default) for regular files, or 777 for directories. The UMASK
+is then applied as a SUBTRACTIVE MASK — it REMOVES permission bits from
+that starting point, rather than adding them.</p>
+
+<div class="scenario">
+<h4>Worked scenario: umask 022 applied to a new file's default 666, traced bit by bit</h4>
+<pre>Starting point for a new file: 666 = rw-rw-rw-
+umask:                          022
+
+umask 022 means: "remove write permission for GROUP and OTHER"
+  (0 = remove nothing from owner, 2 = remove write(2) from group,
+   2 = remove write(2) from other)
+
+666
+-022
+----
+644  =  rw-r--r--
+
+This EXACTLY matches this module's own filesystem_and_permissions.sh
+output: "A new regular file normally starts at 666 ... umask 022
+removes write for group and other, leaving 644."</pre>
+</div>
+
+<div class="why">
+<strong>Why is umask SUBTRACTIVE (removing bits from a maximum) rather
+than a direct target value?</strong> This design lets ONE umask setting
+correctly apply to BOTH files (starting max 666) and directories
+(starting max 777) simultaneously, producing the right RELATIVE result
+for each without needing separate settings — umask 022 applied to a
+file's 666 gives 644; the SAME umask 022 applied to a directory's 777
+gives 755 (again removing write from group/other) — a single system-wide
+default policy, expressed once, correctly covering both cases because
+subtraction (removing SPECIFIC bit positions) generalizes cleanly in a
+way a single fixed target value wouldn't.
+</div>
+
+<h2 id="sec4">4. Special Bits — setuid, setgid, sticky, Fully Explained</h2>
+
+<h3>4.1 — The sticky bit, using /tmp as the concrete, universal example</h3>
+<p>This module's own script checks <code>/tmp</code>'s real permissions
+directly on your live system and finds <code>1777</code> — the leading
+<code>1</code> is the STICKY BIT, displayed as a trailing
+<code>t</code> in the symbolic form (<code>drwxrwxrwt</code>).</p>
+<div class="scenario">
+<h4>Scenario: why /tmp needs to be BOTH world-writable AND sticky simultaneously</h4>
+<p><code>/tmp</code> must be writable by EVERY user on the system (any
+program, run by any user, might need to create a temporary file there)
+— hence the <code>777</code> base permission (world-writable). But
+WITHOUT the sticky bit, world-writable would ALSO mean any user could
+DELETE or RENAME any other user's files in <code>/tmp</code> — a real
+security and reliability problem on any shared, multi-user system (one
+user maliciously or accidentally deleting another user's temp files).
+The sticky bit adds exactly ONE additional restriction on top of
+777's normal permissions: even though everyone can CREATE files there,
+only a file's OWNER (or root) may delete or rename an EXISTING file —
+solving the "shared writable directory" problem with a single extra
+bit, rather than requiring per-user subdirectories or more complex
+access control.</p>
+</div>
+
+<h3>4.2 — setuid, fully explained with a concrete scenario</h3>
+<p>Normally, a program you run executes with YOUR OWN user privileges —
+it can only do what YOU are allowed to do. The SETUID bit changes this:
+a setuid program runs with the privileges of the file's OWNER, not the
+user who launched it.</p>
+<div class="scenario">
+<h4>Scenario: /usr/bin/passwd, a real, universal setuid example</h4>
+<p>Changing your own password requires writing to
+<code>/etc/shadow</code> — a file that ordinary (non-root) users cannot
+write to directly, by design (if any user could edit
+<code>/etc/shadow</code> directly, they could grant themselves root
+access trivially). Yet ordinary users obviously NEED to be able to
+change their own password. The <code>passwd</code> program solves this
+with setuid: it's OWNED by root, and has the setuid bit set — so when
+YOU (an ordinary user) run <code>passwd</code>, the PROGRAM temporarily
+runs with ROOT's privileges (not yours), specifically long enough to
+perform the narrow, carefully-controlled task of updating your own
+password entry, then exits. You never gain root privileges yourself —
+only the program, and only for its own tightly-scoped purpose.</p>
+</div>
+<div class="why">
+<strong>Why is this module's Exercise 2 (find every SUID binary with
+<code>find / -perm -4000 -type f</code>) framed as security-relevant,
+not just informational?</strong> Every setuid binary is a genuine
+PRIVILEGE ESCALATION SURFACE — if a setuid-root program has a
+vulnerability (a buffer overflow, per Module 00b, being a classic
+example) that lets an attacker control its behavior, that attacker
+inherits ROOT-level privileges through the vulnerable program, even
+though they only had ordinary user access to begin with. This is
+exactly why real security auditing (and real CTF privilege-escalation
+challenges, echoing Module 21) routinely starts with exactly this
+command — enumerating setuid binaries is one of the first things both
+attackers and defenders check on a new system.
+</div>
+
+<h3>4.3 — setgid, briefly, for completeness</h3>
+<p>SETGID works analogously to setuid but for GROUP ownership instead of
+user ownership — a setgid EXECUTABLE runs with the file's group
+privileges rather than the invoking user's group. Applied to a
+DIRECTORY (a different, also-common usage), setgid means "any NEW file
+created inside this directory automatically inherits the directory's
+own group," rather than the creating user's default group — useful for
+shared team directories where every file should stay owned by a common
+project group regardless of which team member created it.</p>
+
+<h2 id="sec5">5. Real UID vs. Effective UID — The Mechanism setuid Depends On</h2>
+
+<p>Every running process has (at minimum) TWO separate UID values, not
+just one — this is the precise mechanism that makes setuid actually
+work: the REAL UID identifies who ACTUALLY launched the process (your
+own real identity, unchanged); the EFFECTIVE UID identifies what
+privileges the process is CURRENTLY operating with — which is what the
+kernel actually checks when deciding whether to allow a given action
+(like writing to <code>/etc/shadow</code>).</p>
+
+<div class="scenario">
+<h4>Scenario: running passwd, traced through real/effective UID</h4>
+<pre>You launch /usr/bin/passwd as yourself (say, UID 1000):
+  Real UID:      1000  (you, unchanged, the entire time)
+  Effective UID: 1000  (initially -- same as real UID, at launch)
+
+The kernel notices passwd's setuid bit is set, owned by root (UID 0):
+  Real UID:      1000  (STILL you -- this never changes)
+  Effective UID: 0     (NOW root -- because of the setuid bit)
+
+passwd can now write to /etc/shadow, because the kernel checks the
+EFFECTIVE UID (0, root) when deciding whether this write is allowed --
+not the real UID.
+
+When passwd exits, this elevated effective UID goes away entirely --
+your NEXT command runs with effective UID 1000 again, same as always.</pre>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain why the distinction
+between real and effective UID is necessary — why couldn't the kernel
+just track a single UID per process?" A single UID value couldn't
+represent BOTH "who is accountable for/owns this process" (needed for
+things like resource accounting, and for a process to be able to
+determine and log its OWN original identity) AND "what privilege level
+should currently govern this process's actions" (needed for the setuid
+mechanism to temporarily elevate privileges for a specific, narrow
+purpose) simultaneously, since these two questions can have genuinely
+different correct answers during a setuid program's execution. Two
+separate fields let the kernel answer both questions independently and
+correctly at every point in the process's lifetime.
+</div>
+
+<h2 id="sec6">6. systemd Units, Line By Line — What Every Directive Does</h2>
+
+<p>This module's own <code>heartbeat.service</code> file is short but
+every single line is doing real, specific work. Walk through it
+directive by directive.</p>
+
+<pre>[Unit]
+Description=Module 00c heartbeat demo service
+
+[Service]
+Type=simple
+ExecStart=%h/module00c-demo/heartbeat.sh
+Restart=on-failure
+
+[Install]
+WantedBy=default.target</pre>
+
+<table>
+<tr><th>Directive</th><th>What it actually does</th></tr>
+<tr><td><code>[Unit]</code> / <code>Description=</code></td><td>The <code>[Unit]</code> section holds metadata and dependency information about the unit generally. <code>Description=</code> is purely a human-readable label — shown in <code>systemctl status</code> output — with zero functional effect on behavior.</td></tr>
+<tr><td><code>[Service]</code> / <code>Type=simple</code></td><td>Tells systemd HOW to determine when this service has finished "starting up." <code>Type=simple</code> (the simplest, most common type) means: "the process named in ExecStart IS the service — consider it started the instant that process launches," as opposed to more complex types (like <code>Type=forking</code>, used for older-style daemons that fork into the background and expect systemd to track the CHILD process instead of the one it directly launched).</td></tr>
+<tr><td><code>ExecStart=%h/module00c-demo/heartbeat.sh</code></td><td>The actual command systemd runs to start this service. <code>%h</code> is a systemd SPECIFIER — expanded at runtime to the home directory of the user this unit runs as, specifically so this unit file works correctly for ANY user without hardcoding a specific username's home directory path.</td></tr>
+<tr><td><code>Restart=on-failure</code></td><td>Tells systemd to AUTOMATICALLY restart this service if it exits with a non-zero (failure) status — but NOT if it exits cleanly (status 0) or is deliberately stopped via <code>systemctl stop</code>. This is a real reliability feature: a service that crashes due to a transient issue gets automatically relaunched without requiring a human to notice and intervene.</td></tr>
+<tr><td><code>[Install]</code> / <code>WantedBy=default.target</code></td><td>This section is ONLY consulted when you run <code>systemctl enable</code> — it does NOT affect starting the service manually. <code>WantedBy=default.target</code> means "when this unit is enabled, create a dependency link so that <code>default.target</code> (systemd's normal 'user session is ready' milestone) WANTS this unit to be started too" — this is the actual mechanism behind "start this service automatically at login," which this module's own tutorial exercises directly via <code>systemctl --user enable</code>.</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does <code>Restart=on-failure</code> specifically distinguish
+"crashed" from "was deliberately stopped," rather than restarting
+unconditionally on ANY exit?</strong> A service you deliberately stop
+via <code>systemctl stop</code> should STAY stopped — that's the whole
+point of stopping it. If systemd restarted a service unconditionally
+regardless of why it exited, <code>systemctl stop</code> would become
+functionally useless (the service would just immediately relaunch
+itself). <code>on-failure</code> specifically threads this needle: exit
+code 0 (or being killed by a normal stop request) is treated as
+"intentional, leave it stopped"; any non-zero exit code is treated as
+"something went wrong, try again" — the distinction is entirely carried
+by the process's OWN exit status, which is exactly why well-written
+services are careful to exit with 0 on clean, deliberate shutdown and
+non-zero on genuine errors.
+</div>
+
+<h2 id="sec7">7. The Full systemd Service Lifecycle, Narrated</h2>
+
+<div class="scenario">
+<h4>The complete story, matching exactly what this module's tutorial.html Step 2 walks through</h4>
+<ol>
+<li><strong><code>mkdir -p ~/.config/systemd/user</code></strong> — creates the directory where systemd looks for USER-level (not system-wide) unit files. Its existence (or non-existence) is why this course uses <code>--user</code> units at all: no root/sudo access is required anywhere in this entire workflow, since everything lives under YOUR OWN home directory.</li>
+<li><strong><code>cp heartbeat.service ~/.config/systemd/user/</code></strong> — places the unit file where systemd's user-mode instance will actually find and read it.</li>
+<li><strong><code>systemctl --user daemon-reload</code></strong> — tells the ALREADY-RUNNING systemd user instance to re-scan its unit file directories and pick up the new (or changed) file. Without this step, systemd wouldn't even know <code>heartbeat.service</code> exists yet — unit files aren't watched/auto-reloaded continuously; you must explicitly request a reload after any change.</li>
+<li><strong><code>systemctl --user start heartbeat.service</code></strong> — actually launches the service NOW, this one time. This does NOT set it up to launch automatically in the future — that's a SEPARATE decision, made via <code>enable</code> (step 6).</li>
+<li><strong><code>systemctl --user status heartbeat.service</code></strong> — confirmed, during this module's real testing, to show <code>Active: active (running)</code> with a genuine process ID — proof the service is actually running, not just that the <code>start</code> command was accepted without error.</li>
+<li><strong><code>systemctl --user enable heartbeat.service</code></strong> — this is the step that actually creates the <code>WantedBy=default.target</code> dependency link (Section 6's table) on disk, specifically so this service starts AUTOMATICALLY at your next login — completely independent of whether it's currently running right now.</li>
+<li><strong><code>journalctl --user -u heartbeat.service</code></strong> — shows this specific unit's captured log output. Confirmed during this module's real build: every heartbeat message the script printed to stdout appeared here automatically, with ZERO explicit logging code written anywhere — systemd captures a unit's stdout/stderr by default, redirecting it into the structured journal log automatically.</li>
+<li><strong><code>systemctl --user stop</code> / <code>disable</code></strong> — <code>stop</code> ends the CURRENTLY running instance immediately; <code>disable</code> removes the auto-start-at-login link created by <code>enable</code>. These are two INDEPENDENT axes (currently running vs. will-auto-start-later) — confirmed by this module's own tutorial, which runs each separately and checks <code>is-enabled</code>/<code>is-active</code> after each to show they change independently.</li>
+</ol>
+</div>
+
+<div class="brain">
+<strong>Brain power:</strong> why are "running now" (start/stop) and
+"will auto-start later" (enable/disable) deliberately SEPARATE, rather
+than one combined toggle? Because these answer genuinely different
+questions with genuinely different valid combinations in practice: a
+service could be currently STOPPED but ENABLED (will start at your NEXT
+login, but you manually stopped THIS session's instance for now) — or
+currently RUNNING but DISABLED (you started it manually just for this
+session, with no intention of it persisting across a reboot/relogin).
+Collapsing these into one setting would make either of these
+genuinely-common, genuinely-different situations impossible to express.
+</div>
+
+<h2 id="sec8">8. Package Management — apt, dpkg, and Dependency Resolution</h2>
+
+<table>
+<tr><th>Command</th><th>What it does</th></tr>
+<tr><td><code>apt list --installed</code></td><td>Lists every package CURRENTLY installed on this system — purely read-only, reports existing state.</td></tr>
+<tr><td><code>apt-cache show curl</code></td><td>Shows METADATA about a package (version, description, size, dependencies) WITHOUT installing it — <code>apt-cache</code> operates entirely against apt's locally-cached package INDEX (metadata downloaded during <code>apt update</code>), not against the actual installed system.</td></tr>
+<tr><td><code>dpkg -S /bin/bash</code></td><td>"Search" — given a FILE PATH, reports which installed PACKAGE owns/provided that file. <code>dpkg</code> (Debian Package manager, the lower-level tool <code>apt</code> itself is built on top of) tracks exactly which package installed every file on the system.</td></tr>
+<tr><td><code>dpkg -L bash</code></td><td>The REVERSE direction — given a package NAME, lists every file that package installed.</td></tr>
+<tr><td><code>apt-get install --simulate -y cowsay</code></td><td>Shows EXACTLY what a real install would do (which packages would be installed, upgraded, or removed, and how much disk space would be used) WITHOUT actually performing any of it — <code>--simulate</code> (or its shorter alias <code>-s</code>) is apt's "dry run" mode, confirmed during this module's own testing via a subsequent <code>which cowsay</code> check showing nothing was actually installed.</td></tr>
+<tr><td><code>apt-cache depends curl</code></td><td>Shows curl's DEPENDENCY GRAPH — every OTHER package curl itself requires to function. This is exactly the mechanism that determines what ELSE gets pulled in during a real <code>apt install curl</code> — every listed dependency that isn't already satisfied on your system gets installed too, automatically.</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does this module draw such a careful line — READ-ONLY
+commands and <code>--simulate</code> only, with an explicit
+post-hoc <code>which cowsay</code> verification that nothing was
+actually installed?</strong> Package management commands have REAL,
+PERSISTENT side effects on your actual system (installing packages
+consumes real disk space, potentially changes system behavior, and
+isn't trivially reversible in every case) — this is categorically
+different from every OTHER command in this module (permissions, systemd
+units), which either operate in a disposable temp directory or on a
+user-level systemd instance you fully control and can cleanly tear
+down. Package management specifically touches SYSTEM-WIDE state, which
+is exactly the kind of action this course's own safety principles
+(see <code>SAFETY.md</code>) treat with deliberate extra caution.
+</div>
+
+<h2 id="sec9">9. Full Code Walkthrough — filesystem_and_permissions.sh</h2>
+
+<h3>9.1 — <code>set -e</code> and the throwaway working directory</h3>
+<pre>set -e
+WORKDIR=$(mktemp -d)
+cd "$WORKDIR"</pre>
+<p><code>set -e</code> is a bash safety directive: "if ANY command in
+this script fails (returns a non-zero exit status), stop the entire
+script immediately" — without it, a failed command's error would simply
+print and the script would keep going, potentially compounding into
+confusing later failures. <code>mktemp -d</code> creates a genuinely
+unique, freshly-generated temporary DIRECTORY (not just a filename) —
+guaranteeing this script never collides with a previous run's leftover
+files and, per the script's own final cleanup step
+(<code>rm -rf "$WORKDIR"</code>), leaves absolutely no trace once
+finished.</p>
+
+<h3>9.2 — The permission-denied proof, unpacked</h3>
+<pre>if ./script.sh 2>/tmp/perm_error.txt; then
+    echo "  (unexpectedly succeeded)"
+else
+    echo "  FAILED as expected: $(cat /tmp/perm_error.txt)"
+fi</pre>
+<p>This is written as an <code>if</code>/<code>else</code> rather than
+just running the command directly and assuming failure — a genuinely
+more careful, honest testing pattern: it EXPLICITLY handles both
+possible outcomes (the script running despite missing execute
+permission would be a genuinely surprising, worth-flagging result,
+rather than something silently ignored), and it CAPTURES the actual
+error message (redirected to a temp file via <code>2>/tmp/perm_error.txt</code>,
+since stderr is where a "Permission denied" message would appear) so
+the real OS-level error text is displayed, not just an assumption about
+what it would say.</p>
+
+<h2 id="sec10">10. Full Code Walkthrough — package_management.sh</h2>
+
+<h3>10.1 — Why every apt/dpkg call redirects stderr with <code>2>/dev/null</code></h3>
+<pre>apt list --installed 2>/dev/null | head -5</pre>
+<p><code>apt list</code> (and several other apt subcommands) print a
+literal warning to STDERR — "WARNING: apt does not have a stable CLI
+interface, use with caution in scripts" — every single time they're
+invoked, specifically because apt's plain-text output format isn't
+officially guaranteed to stay identical across versions (a real,
+documented caveat, not a bug). <code>2>/dev/null</code> discards stderr
+specifically so this recurring, expected warning doesn't clutter this
+module's own demonstration output — an intentional choice to keep the
+teaching output clean, not an attempt to hide a REAL error (this
+module's own comments are transparent about this).</p>
+
+<h3>10.2 — The fallback pattern in the dpkg -S line</h3>
+<pre>dpkg -S /bin/bash 2>/dev/null || dpkg -S "$(readlink -f /bin/bash)"</pre>
+<p>The <code>||</code> ("or") operator runs the SECOND command only if
+the FIRST one fails. This handles a real, genuine platform quirk: on
+some systems, <code>/bin/bash</code> is itself a SYMLINK (pointing to
+the real binary elsewhere, like <code>/usr/bin/bash</code>) — and
+<code>dpkg -S</code> queries by the EXACT path string, which can fail on
+a symlink path even though the underlying real file IS tracked by
+dpkg. <code>readlink -f</code> resolves the symlink to its REAL,
+canonical target path FIRST, and the fallback retries the query against
+that resolved path instead — a genuinely defensive, portable scripting
+pattern worth recognizing.</p>
+
+<h2 id="sec11">11. Troubleshooting Scenarios You Will Actually Hit</h2>
+
+<div class="scenario">
+<h4>Scenario: systemctl --user start succeeds with no error, but status shows "inactive (dead)" immediately after</h4>
+<p>This almost always means the service's <code>ExecStart</code> command
+failed IMMEDIATELY (exited with a non-zero status right away) rather
+than the unit failing to be RECOGNIZED at all — check
+<code>journalctl --user -u heartbeat.service</code> for the actual
+error output the failed process printed before exiting. Common causes:
+the script referenced in <code>ExecStart</code> isn't actually
+executable yet (forgot <code>chmod +x</code>), or the path is wrong
+(the <code>%h</code> specifier expanding to somewhere the file doesn't
+actually exist).</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: you edit a unit file, restart the service, but your changes don't seem to take effect</h4>
+<p>This is almost always a missing <code>systemctl --user daemon-reload</code>
+step (Section 7, step 3) — systemd caches unit file CONTENTS in memory
+when it first loads them; simply overwriting the file on disk does NOT
+automatically make systemd re-read it. <code>daemon-reload</code> is a
+genuinely easy step to forget, and "I edited the file but nothing
+changed" is one of the single most common systemd confusions.</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: systemctl --user commands fail entirely, with an error about not being able to connect to the bus</h4>
+<p>This module's own build hit a version of this on the first attempt in
+a fresh WSL session — likely a transient timing issue with the
+user-level systemd/D-Bus session not yet being fully ready immediately
+after WSL startup. Waiting a few seconds and retrying, or starting a
+fresh terminal session, typically resolves it — treat a single early
+failure as a possible startup-timing issue worth simply retrying, not
+necessarily evidence of a broken configuration.</p>
+</div>
+
+<h2 id="sec12">12. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 01, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Compute the octal chmod value for any plain-English permission
+description, showing the bit-sum for each of owner/group/other.</li>
+<li>Explain what execute permission means differently for a file versus
+a directory.</li>
+<li>Explain umask as a SUBTRACTIVE mask and compute the resulting
+permissions for a given starting value and umask.</li>
+<li>Explain the sticky bit's purpose using <code>/tmp</code> as the
+concrete example, and explain why <code>/tmp</code> needs to be BOTH
+world-writable and sticky simultaneously.</li>
+<li>Narrate exactly what happens to a process's real vs. effective UID
+when it runs a setuid-root program, using <code>passwd</code> as the
+example.</li>
+<li>Explain every directive in <code>heartbeat.service</code> and what
+would break if any one of them were removed.</li>
+<li>Narrate the full systemd lifecycle (daemon-reload, start, enable,
+stop, disable) and explain why "running now" and "auto-starts later"
+are deliberately independent toggles.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 01 begins the core networking curriculum and
+assumes this level of comfort with the command line as a baseline, not
+a new skill to build alongside the networking material itself.</p>
+
+</body>
+</html>

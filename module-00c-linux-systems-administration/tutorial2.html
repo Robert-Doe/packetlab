@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00c — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 00c — Deep Theory: Permissions, Process Model, and systemd</h1>
+
+<h2>1. The Full Permission Model: Beyond rwx</h2>
+
+<p>The 9 ordinary permission bits (rwx × owner/group/other) are only part
+of the story. Three additional bits matter for security work specifically:</p>
+
+<table>
+<tr><th>Bit</th><th>On a FILE</th><th>On a DIRECTORY</th></tr>
+<tr><td><strong>setuid</strong> (4000)</td><td>Executing the file runs it with the FILE OWNER's privileges, not the invoking user's — this is how <code>/usr/bin/passwd</code> (owned by root) lets an ordinary user change their own password despite that requiring a write to <code>/etc/shadow</code>, a root-only file.</td><td>No effect</td></tr>
+<tr><td><strong>setgid</strong> (2000)</td><td>Runs with the file's GROUP privileges instead of the invoking user's group.</td><td>New files created inside inherit the directory's group, not the creating user's primary group — used for shared team directories.</td></tr>
+<tr><td><strong>sticky</strong> (1000)</td><td>Historically affected how the kernel cached the executable; largely meaningless on files today.</td><td>Only the file's OWNER (or root) may delete/rename files inside, even if the directory itself is world-writable — <code>/tmp</code>'s actual real-world use case, confirmed on your own system in the tutorial.</td></tr>
+</table>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain why a setuid binary
+is a classic privilege-escalation target, and what a security auditor
+should specifically look for." A setuid-root binary runs with full root
+privileges regardless of who invokes it — if that binary has ANY
+exploitable bug (a buffer overflow, per Module 00b; a command injection;
+an unsafe file operation exploitable via a symlink race), an unprivileged
+user who can trigger the bug inherits root's privileges through it. An
+auditor should specifically enumerate all setuid/setgid binaries on a
+system (<code>find / -perm -4000 -o -perm -2000</code>) and verify each
+one is both necessary and free of known vulnerabilities — an unnecessary
+or outdated setuid binary is a disproportionately high-value attack
+target precisely because of what successfully exploiting it grants.
+</div>
+
+<h2>2. The Linux Process Model, and Why It Matters for Security</h2>
+
+<p>Every process has: a Process ID (PID), a Parent PID (PPID, forming a
+tree rooted at PID 1), a real UID and effective UID (usually the same,
+EXCEPT for setuid execution — the effective UID becomes the file owner's,
+while the real UID stays the invoking user's, and it's the EFFECTIVE UID
+the kernel actually checks for most permission decisions), and a set of
+open file descriptors. The distinction between real and effective UID is
+precisely the mechanism setuid relies on, and precisely the mechanism a
+well-written setuid program must carefully manage (temporarily dropping
+elevated privileges when they're not needed, a security best practice
+called "privilege dropping" or "least privilege").</p>
+
+<h3>Process isolation and namespaces (a preview of Module 17's containers)</h3>
+<p>Modern Linux process isolation (the foundation Docker/Kubernetes
+containers, referenced in the original course's Tier 7, are built on) uses
+kernel NAMESPACES — separate views of process IDs, network interfaces,
+mount points, and more, per isolated group of processes — combined with
+CGROUPS (resource limiting: CPU, memory quotas). A "container" is not a
+lightweight VM; it's a set of ordinary Linux processes given a restricted,
+isolated VIEW of the same kernel every other process shares, via
+namespaces and cgroups. Understanding this distinction (containers share
+a kernel; VMs each run their own) is directly relevant to reasoning about
+container escape vulnerabilities as a security topic.</p>
+
+<h2>3. systemd's Dependency Model, Formally</h2>
+
+<p><code>heartbeat.service</code>'s <code>[Unit]</code> section can declare
+relationships to other units:</p>
+<table>
+<tr><th>Directive</th><th>Meaning</th></tr>
+<tr><td><code>After=</code> / <code>Before=</code></td><td>ORDERING only — doesn't imply the other unit will even be started, just that IF both start, this one starts after/before the other.</td></tr>
+<tr><td><code>Requires=</code></td><td>A hard dependency — if the required unit fails, this one is stopped too.</td></tr>
+<tr><td><code>Wants=</code></td><td>A soft dependency — pulls the other unit in when this one starts, but doesn't fail this unit if the other one fails.</td></tr>
+<tr><td><code>WantedBy=</code> (in [Install])</td><td>Which target (e.g. <code>default.target</code>, roughly analogous to old-style runlevels) should pull this unit in when ENABLED — this is what <code>systemctl enable</code> actually wires up.</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does systemd separate "ordering" (After/Before) from
+"dependency" (Requires/Wants) as two independent concepts?</strong>
+Because they answer genuinely different questions. Ordering answers
+"when both of these are starting, which goes first" (e.g., a database
+should start before an application that connects to it). Dependency
+answers "does starting this unit require/imply starting that one at all."
+A unit can declare <code>After=</code> another WITHOUT <code>Requires=</code>
+it — meaning "if you're both starting, go after that one, but I don't
+actually need it to be running." Conflating these two questions was a
+real design weakness of older init systems that systemd specifically set
+out to fix.
+</div>
+
+<h2>4. Why systemctl --user Instead of System-Wide Units</h2>
+
+<p>This module used <code>systemctl --user</code> deliberately. A system
+unit (<code>/etc/systemd/system/*.service</code>) requires root to
+install and manage, runs regardless of whether any particular user is
+logged in, and can bind to privileged ports (below 1024) or access any
+file on the system. A USER unit (<code>~/.config/systemd/user/*.service</code>)
+requires no elevated privilege at all, runs within the invoking user's
+own session and permission boundary, and is started/stopped by that user
+alone — a real demonstration of the principle of least privilege applied
+to systemd itself: use the narrowest privilege scope that accomplishes
+the goal, which for a demo service, is exactly none beyond your own user
+account.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Octal permissions as binary place value</td><td>Module 00a's boolean algebra, TCP/IP flag fields (Module 02, 07)</td></tr>
+<tr><td>setuid/privilege model</td><td>Module 16's vulnerability assessment (privilege escalation CVEs)</td></tr>
+<tr><td>Process model, namespaces/cgroups</td><td>Module 17's container/Kubernetes networking security</td></tr>
+<tr><td>systemd unit dependency model, journald</td><td>Module 14/15's log collection and SIEM pipeline design</td></tr>
+<tr><td>Package dependency graphs</td><td>General literacy for maintaining any Module 09 lab VM</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
