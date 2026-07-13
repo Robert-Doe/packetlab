@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 17 — Exam Practice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.6; color: #1a1a1a; }
+  h1 { border-bottom: 4px solid #222; padding-bottom: 10px; }
+  details { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  summary { font-weight: 600; cursor: pointer; }
+  .answer { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; font-family: "SFMono-Regular", Consolas, monospace; }
+  nav a { margin-right: 16px; }
+  .instructions { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">← Deep Theory</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 17 — Exam Practice</h1>
+<div class="instructions">Cover the answer before reading it. Click Show answer only after you've committed to what you'd actually say.</div>
+
+<details>
+<summary>Q1. Explain why terraform plan can run without any AWS credentials producing errors about missing resources, but still meaningfully report what WOULD change.</summary>
+<div class="answer">
+<strong>A:</strong> This is a trick premise -- <code>plan</code> DOES need
+valid credentials to query the real infrastructure state (it calls the
+AWS API to check current resource status). What it does NOT need is
+permission to CREATE/MODIFY anything -- read-only credentials are
+sufficient for <code>plan</code>, since it only compares and reports,
+never writes. Only <code>apply</code> requires write permissions. This
+distinction (read vs. write credential scope) is itself a real security
+practice: giving a CI pipeline read-only credentials for automatic
+<code>plan</code> runs on every pull request, while reserving write
+credentials for a separate, gated <code>apply</code> step.
+</div>
+</details>
+
+<details>
+<summary>Q2. What specifically determines whether a subnet is "public" or "private" in AWS? Is this a property of the subnet resource itself?</summary>
+<div class="answer">
+<strong>A:</strong> No -- it is entirely a property of the subnet's
+associated ROUTE TABLE, not any inherent flag on the subnet resource
+itself. A subnet whose route table sends <code>0.0.0.0/0</code> to an
+Internet Gateway is "public"; one that routes it through a NAT Gateway
+(or has no default route) is "private." The <code>aws_subnet</code>
+resource type is structurally identical either way -- only the
+<code>aws_route_table</code> it's associated with differs.
+</div>
+</details>
+
+<details>
+<summary>Q3. Connect this module's NAT Gateway to Module 10's NAT theory. What is functionally the same, and what is different?</summary>
+<div class="answer">
+<strong>A:</strong> Functionally the same: both perform address
+translation so that private-address hosts can reach the internet
+outbound while remaining unreachable for unsolicited inbound connections
+-- the same conntrack-style state tracking concept from Module 10 applies.
+What's different: Module 10's NAT was a feature of a router/firewall you
+configure and run yourself (iptables rules on a Linux box); AWS's NAT
+Gateway is a fully MANAGED service -- you don't administer the underlying
+software, patch it, or scale it; you simply declare it exists and AWS
+operates it, billed by usage rather than requiring you to run infrastructure.
+</div>
+</details>
+
+<details>
+<summary>Q4. Why does terraform destroy matter operationally in a way that has no real analog in this course's local Python/JS labs?</summary>
+<div class="answer">
+<strong>A:</strong> Local labs (a Flask server on :5000, a DNS server on
+:5053) cost nothing to leave running or forget about -- stopping the
+Python process ends all resource usage instantly and completely. Real
+cloud resources (a NAT Gateway, a load balancer) bill CONTINUOUSLY for as
+long as they exist, regardless of whether you're using them. Forgetting
+to run <code>destroy</code> after a lab exercise has an ongoing real
+dollar cost that accumulates silently until someone notices -- a genuinely
+different failure mode than anything else in this course.
+</div>
+</details>
+
+<details>
+<summary>Q5. A security group rule references another security group as its source, rather than a CIDR block. What does this buy you that a CIDR-based rule cannot?</summary>
+<div class="answer">
+<strong>A:</strong> A CIDR-based rule allows traffic from a fixed IP
+range -- if the allowed instances' IP addresses change (autoscaling
+launches new instances with new IPs, for example), the rule must be
+manually updated to stay correct. A security-group-referencing rule
+instead allows traffic from "whatever instances currently have this
+security group attached," automatically staying correct as instances are
+created or destroyed -- membership-based, not address-based, matching this
+module's <code>app-sg</code> referencing <code>web-sg</code> directly
+rather than hardcoding the web tier's IP range.
+</div>
+</details>
+
+<details>
+<summary>Q6. Briefly, how does a Kubernetes NetworkPolicy's approach to segmentation differ from this module's AWS security groups, and how is it conceptually similar?</summary>
+<div class="answer">
+<strong>A:</strong> Similar: both express "what can talk to what" as a
+declarative POLICY enforced by the platform, rather than packet-filtering
+rules you manually maintain on each host. Different: security groups
+attach to EC2 instances/ENIs and typically reference other security
+groups or CIDR blocks; NetworkPolicies attach to PODS and select their
+peers by POD LABELS -- a finer-grained unit of segmentation appropriate
+to an environment where many containers share a single underlying host,
+unlike EC2 instances which are already isolated at the VM level.
+</div>
+</details>
+
+<details>
+<summary>Q7. Synthesis: this module's Exercise 3 asks you to compare cloud security groups to Module 10's NAT/firewall. Give the single most important structural similarity.</summary>
+<div class="answer">
+<strong>A:</strong> Both are STATEFUL by default -- a security group
+automatically allows the RETURN traffic for any connection its rules
+permitted outbound (or inbound), without needing an explicit matching
+rule in the opposite direction, exactly like Module 10's conntrack-based
+stateful firewall automatically permitting a TCP connection's response
+packets once the initial outbound SYN was allowed. This is the same
+"track connection state, don't just filter each packet in isolation"
+design principle appearing at two completely different layers of the
+stack -- a Linux kernel feature in Module 10, a managed cloud primitive
+here.
+</div>
+</details>
+
+</body>
+</html>

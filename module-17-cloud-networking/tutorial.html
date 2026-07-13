@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 17 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  .warn { background: #fdecec; border-left: 4px solid #c0392b; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 17 — Tutorial</h1>
+<p>Goal: design a real 3-tier cloud network (VPC, public/private subnets,
+chained security groups, a load balancer) as actual Terraform, audit its
+security group logic before ever deploying anything, then deploy it
+yourself on your own free-tier AWS account.</p>
+
+<div class="warn">
+<strong>This course will never create a cloud account or enter payment
+details on your behalf.</strong> AWS account creation, billing setup, and
+running <code>terraform apply</code> against real infrastructure are all
+steps you perform yourself, on your own account, with your own
+credentials. What this module DID verify: <code>sg_rule_auditor.py</code>/<code>.js</code>
+are fully tested against both a correct and a deliberately broken security
+group design. What it could NOT verify (no Terraform CLI or HCL parser
+was available in this build environment): that <code>terraform/main.tf</code>
+passes <code>terraform validate</code> — do this yourself as Step 1 below,
+before ever running <code>apply</code>.
+</div>
+
+<h2>Step 1 — validate the Terraform yourself, first</h2>
+<pre>cd module-17-cloud-networking/terraform
+terraform init
+terraform validate
+terraform plan</pre>
+<div class="expect"><strong>Expected:</strong> <code>validate</code>
+reports the configuration is syntactically valid. <code>plan</code> shows
+what WOULD be created (a VPC, 4 subnets, an internet gateway, a NAT
+gateway, 3 security groups, a load balancer) without creating anything
+yet. Read through the plan output carefully — this is the real "dry run"
+step nobody should skip before <code>apply</code>.</div>
+
+<h2>Step 2 — audit the security group design before deploying</h2>
+<pre>cd ..
+python sg_rule_auditor.py</pre>
+<div class="expect"><strong>Expected:</strong> zero findings against the
+real 3-tier design (<code>web-sg</code>, <code>app-sg</code>,
+<code>db-sg</code>) — confirming <code>app-sg</code> and
+<code>db-sg</code>'s security-group-reference pattern (rather than raw
+CIDR blocks) is what keeps them safe. Two findings against the
+deliberately misconfigured example (open SSH and MySQL to the whole
+internet) — confirming the auditor actually catches real mistakes, not
+just passing everything.</div>
+<pre>node sg_rule_auditor.js</pre>
+<div class="expect">Identical findings (verified during this module's
+build with a byte-diff).</div>
+
+<h2>Step 3 (your own AWS account) — deploy it for real</h2>
+<pre>terraform apply</pre>
+<div class="expect"><strong>Expected:</strong> after confirming the plan,
+real AWS resources are created. Note the <code>alb_dns_name</code> output
+— that's a real, publicly resolvable DNS name for your load balancer.
+Confirm you can reach it (it'll show a "no healthy targets" error until
+you actually deploy something to the app tier — that's expected and
+correct, given the health check configuration).</div>
+
+<h2>Step 4 — tear it down when you're done</h2>
+<pre>terraform destroy</pre>
+<div class="expect"><strong>Expected:</strong> every resource this
+configuration created is removed. AWS's free tier has real limits and
+real resources cost real money past those limits — always destroy lab
+infrastructure you're not actively using.</div>
+
+<h2>Exercises before Module 18</h2>
+<ol>
+  <li><strong>Extend the auditor to check egress rules too.</strong>
+      <code>main.tf</code>'s security groups all allow unrestricted egress
+      (<code>0.0.0.0/0</code>, all ports) — reasonable for a lab, but worth
+      flagging as a lower-severity finding in a stricter review. Add this
+      check to both language variants.</li>
+  <li><strong>Add a 4th tier.</strong> Extend the Terraform with a
+      dedicated "cache" tier (Redis/Memcached) reachable only from
+      <code>app-sg</code>, matching this module's existing chain pattern —
+      then confirm <code>sg_rule_auditor.py</code> still reports zero
+      findings once you model it correctly in the sample data too.</li>
+  <li><strong>Compare cloud security groups to Module 10's NAT/firewall.</strong>
+      Write a few sentences on what's structurally similar (stateful,
+      default-deny, explicit allow rules) and what's different (security
+      groups reference OTHER security groups directly, not just IP
+      ranges — something Module 10's simulated firewall never modeled)
+      between an AWS security group and a home router's NAT/firewall.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 18:</strong> you should be able to explain why
+<code>app-sg</code> referencing <code>web-sg</code> directly (rather than
+a CIDR block) is more secure and more maintainable, and be comfortable
+reading a Terraform plan's output before applying it. Module 18 moves to
+network forensics — reconstructing an incident from a PCAP file, timeline
+by timeline.
+</div>
+
+</body>
+</html>

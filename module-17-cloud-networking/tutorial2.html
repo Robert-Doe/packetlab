@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 17 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 17 — Deep Theory: Terraform's Model and Cloud Networking, From Zero</h1>
+
+<h2>1. Command-by-Command: The Terraform Lifecycle</h2>
+
+<h3><code>terraform init</code></h3>
+<p><strong>What it does:</strong> downloads and installs the PROVIDER
+plugins your configuration references (here, <code>hashicorp/aws</code>,
+declared in <code>main.tf</code>'s <code>required_providers</code>
+block) — Terraform's core engine knows nothing about AWS, Azure, or any
+specific cloud vendor's API; providers are the plugins that translate
+Terraform's generic resource model into actual API calls for a specific
+platform. This must run once (and again whenever you add/change
+providers) before any other Terraform command works.</p>
+
+<h3><code>terraform validate</code></h3>
+<p><strong>What it does:</strong> checks your configuration's syntax and
+INTERNAL consistency (are all referenced resources/variables actually
+defined, are argument types correct) — entirely OFFLINE, without
+contacting AWS at all, and without needing real credentials. This is
+exactly the check this course's own build environment couldn't perform
+(no Terraform CLI was available), which is why the tutorial explicitly
+asks the student to run it themselves before trusting the configuration.</p>
+
+<h3><code>terraform plan</code></h3>
+<p><strong>What it does:</strong> compares your CONFIGURATION (what you
+wrote) against the current STATE (Terraform's own record of what it
+last knows to actually exist, stored in a <code>terraform.tfstate</code>
+file) and against the REAL infrastructure (by querying the cloud
+provider's API) — then computes and displays exactly what changes would
+be needed to make reality match your configuration, WITHOUT actually
+making any changes yet.</p>
+
+<div class="why">
+<strong>Why does Terraform need its OWN state file, rather than just
+querying the cloud provider directly every time?</strong> The state file
+lets Terraform track resources IT created specifically (vs. other
+resources that might exist in your account for unrelated reasons), map
+your configuration's logical resource names (like
+<code>aws_vpc.main</code>) to the cloud provider's own real, opaque
+resource IDs, and detect DRIFT — cases where someone manually changed a
+resource outside of Terraform, which <code>plan</code> would then flag as
+an unexpected difference needing reconciliation.
+</div>
+
+<h3><code>terraform apply</code> / <code>terraform destroy</code></h3>
+<p><strong>What each does:</strong> <code>apply</code> executes the plan
+(creating/modifying/destroying real resources to match your
+configuration) after you confirm; <code>destroy</code> is functionally
+"apply, but the target configuration is nothing" — it removes every
+resource Terraform's state file shows it created for this configuration.
+<strong>Why destroying lab infrastructure specifically matters:</strong>
+cloud resources bill CONTINUOUSLY while they exist (a running load
+balancer, a NAT gateway) — unlike this course's local Python/JS labs,
+where "forgetting" to clean up costs nothing, forgetting to
+<code>destroy</code> real cloud infrastructure has an ongoing real
+dollar cost.</p>
+
+<h2>2. Public vs. Private Subnets, the Actual Routing Distinction</h2>
+<p>Nothing about a subnet is inherently "public" or "private" — the
+distinction is ENTIRELY about its ROUTE TABLE. A public subnet's route
+table has a route to an Internet Gateway for
+<code>0.0.0.0/0</code> (direct internet reachability, both directions). A
+private subnet's route table instead routes <code>0.0.0.0/0</code> through
+a NAT Gateway (outbound-only, per Module 10's NAT theory) — or has no
+default route at all, meaning no internet access whatsoever. This is
+exactly why <code>main.tf</code> defines separate
+<code>aws_route_table</code> resources for public and private subnets,
+each with a different default route target — the subnet resource itself
+is identical in structure either way.</p>
+
+<h2>3. Kubernetes Network Policies and Service Mesh, Briefly (Beyond This Module's Terraform)</h2>
+<p>Once workloads run as CONTAINERS orchestrated by Kubernetes (rather
+than VMs behind security groups), network segmentation is expressed
+differently: a Kubernetes <code>NetworkPolicy</code> resource declares
+which PODS (not IP ranges) can communicate with which other pods, based
+on POD LABELS — conceptually the same "reference the other thing
+directly, not its IP" pattern this module's <code>app-sg</code>
+referencing <code>web-sg</code> demonstrated, just at pod-label
+granularity instead of security-group granularity. A SERVICE MESH (e.g.,
+Istio) goes further, injecting a proxy alongside every container
+specifically to enforce fine-grained policy AND provide mutual TLS
+(Module 13's mTLS, applied automatically between every pod-to-pod
+connection) without the application code itself needing to implement
+any of it.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Terraform's declarative state model</td><td>General infrastructure-as-code literacy for any modern cloud/DevOps role</td></tr>
+<tr><td>Public/private subnet routing distinction</td><td>Direct extension of Module 05's routing table concept and Module 10's NAT theory</td></tr>
+<tr><td>Kubernetes NetworkPolicy / service mesh</td><td>Tier 7's container security concepts, general modern infrastructure literacy</td></tr>
+<tr><td>terraform plan as a "dry run" safety practice</td><td>General change-management discipline applicable to any infrastructure work</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

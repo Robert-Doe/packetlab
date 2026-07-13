@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 17 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 17 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+trace <code>sg_rule_auditor.py</code>'s exact detection logic, explain
+precisely why security-group references beat raw CIDR blocks, and
+explain how Terraform builds its dependency graph from nothing but
+resource references in the HCL itself.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">Security groups vs. NACLs — stateful vs. stateless, precisely</a></li>
+<li><a href="#sec2">Why security-group references beat raw CIDR blocks</a></li>
+<li><a href="#sec3">sg_rule_auditor.py's detection logic, traced completely</a></li>
+<li><a href="#sec4">Terraform's implicit dependency graph, explained</a></li>
+<li><a href="#sec5">Why the NAT gateway lives in the PUBLIC subnet</a></li>
+<li><a href="#sec6">The load balancer's health check, precisely explained</a></li>
+<li><a href="#sec7">Full code walkthrough — audit_security_group()</a></li>
+<li><a href="#sec8">Many worked scenarios</a></li>
+<li><a href="#sec9">Troubleshooting and common confusions</a></li>
+<li><a href="#sec10">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. Security Groups vs. NACLs — Stateful vs. Stateless, Precisely</h2>
+
+<p>AWS actually provides TWO layers of network-level access control, and
+understanding the precise difference is a genuinely common exam/interview
+topic. This module's own <code>main.tf</code> uses ONLY security
+groups — worth knowing what's DIFFERENT about the alternative.</p>
+
+<table>
+<tr><th>Property</th><th>Security Group (this module's own mechanism)</th><th>Network ACL (NACL, not used in this module)</th></tr>
+<tr><td>Statefulness</td><td>STATEFUL — return traffic for an ALLOWED connection is automatically permitted, with no explicit matching outbound/inbound rule pair needed (directly reusing Module 10's conntrack-style "track connection state" principle)</td><td>STATELESS — every direction must be EXPLICITLY allowed; return traffic is NOT automatically permitted just because the outbound request was allowed</td></tr>
+<tr><td>Applies to</td><td>Individual instances/ENIs (network interfaces)</td><td>An entire SUBNET</td></tr>
+<tr><td>Rule evaluation</td><td>ALL rules evaluated; if ANY rule allows the traffic, it's permitted (no explicit "deny" rules exist in a security group at all — everything not explicitly allowed is implicitly denied)</td><td>Rules evaluated IN NUMBERED ORDER, first match wins — can include explicit DENY rules, similar in spirit to Module 10's iptables rule-order sensitivity</td></tr>
+</table>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does Terraform's own
+aws_security_group resources in this module's main.tf need only
+INGRESS rules for the intended traffic flow, with no need to separately
+declare that RESPONSE traffic is allowed?" Because AWS security groups
+are STATEFUL — exactly reusing Module 10's own conntrack principle
+(Section 3 there): once an ingress rule permits a connection IN,
+whatever RESPONSE traffic that specific, tracked connection generates is
+automatically permitted back OUT, without needing a corresponding
+explicit egress rule for that reply traffic specifically. This is
+precisely why <code>aws_security_group.web</code>'s broad
+<code>egress { ... cidr_blocks = ["0.0.0.0/0"] }</code> rule (allowing
+ALL outbound) doesn't compromise the tier's actual security posture as
+much as it might initially seem — inbound is still tightly restricted
+to only 80/443, and stateful tracking, not the broad egress rule,
+governs what response traffic is legitimately permitted back.
+</div>
+
+<h2 id="sec2">2. Why Security-Group References Beat Raw CIDR Blocks</h2>
+
+<pre># app-sg's ingress rule:
+ingress {
+  from_port       = 8080
+  to_port         = 8080
+  protocol        = "tcp"
+  security_groups = [aws_security_group.web.id]   # NOT a cidr_blocks list
+}</pre>
+
+<div class="why">
+<strong>Why does referencing another security group (by ID) provide a
+genuinely different, better guarantee than listing that tier's known IP
+addresses directly?</strong> A CIDR-based rule permits traffic from a
+FIXED address range — if the web tier's actual instances change (new
+instances launched by autoscaling, replaced during a deployment, each
+potentially getting a NEW private IP), a CIDR-based rule would need to
+be MANUALLY UPDATED to stay accurate, or would either incorrectly BLOCK
+new legitimate instances or incorrectly ALLOW traffic from addresses no
+longer actually part of the web tier. A security-group REFERENCE
+instead means "allow traffic from whatever instances CURRENTLY have the
+<code>web-sg</code> security group attached" — a MEMBERSHIP-based rule
+that automatically, correctly adjusts as instances are created or
+destroyed, with zero manual maintenance required. This is EXACTLY why
+<code>sg_rule_auditor.py</code>'s own logic (Section 3) explicitly
+SKIPS any rule using <code>source_sg</code> — it's recognized as the
+inherently safer, self-maintaining pattern, never flagged as a finding.
+</div>
+
+<h2 id="sec3">3. sg_rule_auditor.py's Detection Logic, Traced Completely</h2>
+
+<div class="scenario">
+<h4>Full trace: auditing "db-sg-MISCONFIGURED-example," matching this module's own real output</h4>
+<pre>Rule 1: {"from_port": 3306, "to_port": 3306, "cidr_blocks": ["0.0.0.0/0"]}
+
+  source_sg? No (uses cidr_blocks) -- do NOT skip, continue checking.
+  wide_open = any(c in WIDE_OPEN_CIDRS for c in ["0.0.0.0/0"])
+            = "0.0.0.0/0" in {"0.0.0.0/0", "::/0"} = True
+
+  Check SENSITIVE_PORTS: is port 3306 (MySQL) within [from_port,to_port]=[3306,3306]?
+    3306 <= 3306 <= 3306 -- YES -- FINDING:
+    "MySQL (port 3306) is open to the entire internet (0.0.0.0/0)"
+
+  Check "spans all ports" rule: from_port(3306)==0? NO -- skip this check.
+
+Rule 2: {"from_port": 22, "to_port": 22, "cidr_blocks": ["0.0.0.0/0"]}
+  Same reasoning -- wide_open=True, port 22 (SSH) matches SENSITIVE_PORTS
+  -- FINDING: "SSH (port 22) is open to the entire internet (0.0.0.0/0)"
+
+Total for this security group: 2 findings, EXACTLY matching this
+module's own real, tested output.</pre>
+</div>
+
+<div class="brain">
+<strong>Brain power:</strong> why does the auditor check
+<code>from_port <= port <= to_port</code> rather than simply checking
+<code>from_port == port</code>? Because a SINGLE security group rule can
+legitimately cover a RANGE of ports (e.g., <code>from_port=1024,
+to_port=65535</code> for a range of ephemeral ports), not just one
+specific port — the auditor needs to correctly detect a sensitive port
+falling ANYWHERE WITHIN a potentially wide rule's range, not just an
+EXACT match against a single-port rule. This is exactly why the
+SEPARATE "spans all ports" check (<code>from_port == 0 and to_port >=
+65535</code>) exists too — a rule covering literally every port needs
+its own, additional, unconditional flag (regardless of whether any
+SPECIFIC sensitive port happens to be named in <code>SENSITIVE_PORTS</code>),
+since such a rule represents a meaningfully different, MORE severe
+finding than "one specific sensitive port is exposed."
+</div>
+
+<h2 id="sec4">4. Terraform's Implicit Dependency Graph, Explained</h2>
+
+<p>Nowhere in <code>main.tf</code> does anything explicitly say
+"create the web security group BEFORE the app security group." Yet
+Terraform ALWAYS creates them in the correct order. Understanding
+EXACTLY how this works is genuinely important Terraform/IaC literacy.</p>
+
+<div class="why">
+<strong>How does Terraform know app-sg must be created AFTER web-sg,
+with no explicit ordering directive anywhere in the file?</strong>
+Terraform builds its execution plan by SCANNING every resource block for
+REFERENCES to OTHER resources — <code>security_groups =
+[aws_security_group.web.id]</code> inside <code>aws_security_group.app</code>'s
+definition is itself a REFERENCE to <code>aws_security_group.web</code>'s
+(not-yet-known, since it doesn't exist yet) <code>id</code> attribute.
+Terraform automatically infers from this reference ALONE that
+<code>aws_security_group.web</code> must be FULLY CREATED first
+(so its real, AWS-assigned ID actually exists and can be substituted
+into app-sg's own creation request) — building an entire DEPENDENCY
+GRAPH (a DAG — directed acyclic graph) purely from these REFERENCE
+relationships scattered throughout the file, with NO separate,
+explicit "order of operations" section required anywhere. This is
+EXACTLY why <code>aws_nat_gateway.main</code>'s
+<code>depends_on = [aws_internet_gateway.main]</code> is notable as an
+EXPLICIT exception — most dependencies are inferred automatically from
+references; <code>depends_on</code> is reserved for the rarer cases
+where a real dependency exists that ISN'T expressed through any direct
+attribute reference (the NAT gateway needs the internet gateway to
+exist first for it to actually function correctly, even though nothing
+in the NAT gateway's OWN resource block directly references any of the
+internet gateway's specific attributes).
+</div>
+
+<h2 id="sec5">5. Why The NAT Gateway Lives In The PUBLIC Subnet</h2>
+
+<pre>resource "aws_nat_gateway" "main" {
+  subnet_id = aws_subnet.public[0].id   # PUBLIC subnet, not private
+  ...
+}</pre>
+
+<div class="scenario">
+<h4>Why this placement is not arbitrary — precisely reasoned from Module 04/10's own material</h4>
+<p>The NAT gateway's entire JOB is translating PRIVATE-subnet instances'
+outbound traffic so it can reach the real internet (exactly Module 10
+Section 1's PAT mechanism, now provided as a managed AWS service instead
+of a Linux <code>iptables MASQUERADE</code> rule). For the NAT gateway
+itself to reach the internet, IT needs to be reachable via a route to
+the Internet Gateway — which, per Module 09 Section 3's own public/private
+routing-table distinction, is EXACTLY what defines a subnet as "public"
+in the first place (a route table entry sending <code>0.0.0.0/0</code>
+to an Internet Gateway). Placing the NAT gateway in the PRIVATE subnet
+would be circular/impossible — a private subnet's own route table sends
+<code>0.0.0.0/0</code> traffic TO THE NAT GATEWAY ITSELF (per this
+module's own <code>aws_route_table.private</code> resource), so a NAT
+gateway can't simultaneously BE the thing a private subnet routes
+through AND live inside a subnet with no OTHER path to the internet.</p>
+</div>
+
+<h2 id="sec6">6. The Load Balancer's Health Check, Precisely Explained</h2>
+
+<pre>health_check {
+  path                = "/"
+  healthy_threshold   = 2
+  unhealthy_threshold = 3
+  interval            = 15
+  timeout             = 5
+}</pre>
+
+<div class="why">
+<strong>Why does the load balancer need its OWN health check, given the
+target instances presumably already work when manually tested?</strong>
+A load balancer's core job is distributing traffic ONLY to instances
+CURRENTLY capable of correctly handling requests — an instance that was
+healthy at launch could later fail (application crash, resource
+exhaustion, a bad deployment) WITHOUT the underlying EC2 instance itself
+appearing "down" at the infrastructure level. The health check performs
+a REAL, periodic HTTP request (to <code>path = "/"</code>, every
+<code>interval</code>=15 seconds) and tracks CONSECUTIVE outcomes:
+<code>unhealthy_threshold=3</code> means 3 CONSECUTIVE failures before
+the load balancer stops routing NEW traffic to that specific instance;
+<code>healthy_threshold=2</code> means 2 CONSECUTIVE successes before
+a previously-unhealthy instance is trusted again. Requiring MULTIPLE
+consecutive results (rather than reacting to a single check) is a
+deliberate design choice preventing a single transient blip (one
+slow response, one dropped packet) from unnecessarily yanking a
+genuinely healthy instance out of rotation — directly analogous to
+Module 14's own detection-engineering principle of requiring SUSTAINED
+evidence (multiple occurrences) rather than reacting to a single data
+point.
+</div>
+
+<h2 id="sec7">7. Full Code Walkthrough — audit_security_group()</h2>
+
+<pre>if source_sg:
+    continue  # referencing another security group, not a raw CIDR</pre>
+<p>This single early-<code>continue</code> is the auditor's most
+important line, precisely implementing Section 2's entire principle: any
+rule using <code>source_sg</code> is UNCONDITIONALLY treated as safe and
+skipped entirely, with NO further checks applied — a deliberate design
+choice reflecting that MEMBERSHIP-based rules are structurally safer by
+construction (Section 2), regardless of which specific port they permit.
+Notice this means even a HIGHLY sensitive port (say, port 22/SSH)
+referenced via <code>source_sg</code> would NEVER be flagged by this
+auditor — a genuine, honest LIMITATION worth knowing about: the auditor
+specifically catches "wide open to the raw internet," not "is this port
+generally sensitive regardless of how it's restricted" — a real,
+narrower scope than a truly comprehensive security review would need.</p>
+
+<h2 id="sec8">8. Many Worked Scenarios</h2>
+
+<div class="scenario">
+<h4>Scenario: would the auditor flag a rule allowing SSH (port 22) from a SPECIFIC known IP, like your own home office?</h4>
+<pre>Rule: {"from_port": 22, "to_port": 22, "cidr_blocks": ["203.0.113.50/32"]}
+
+wide_open = "203.0.113.50/32" in {"0.0.0.0/0", "::/0"} = False
+
+Result: NOT flagged -- correctly so. A /32 (single address, Module 04
+Section 3's own edge-case material) restricting SSH access to ONE
+specific, known IP is a completely different, far more restrictive
+risk profile than 0.0.0.0/0 -- the auditor's WIDE_OPEN_CIDRS check
+correctly distinguishes "open to literally everyone" from "open to one
+specific, presumably-trusted source," which is exactly the distinction
+a real security review needs to make.</pre>
+</div>
+
+<h2 id="sec9">9. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming a broad egress rule (allow all outbound)
+is automatically a security problem, given the inbound-restriction focus
+of this entire module.</strong> Outbound (egress) restrictions serve a
+GENUINELY DIFFERENT purpose than inbound (ingress) restrictions — egress
+restrictions primarily matter for CONTAINING a COMPROMISED instance
+(preventing it from exfiltrating data or reaching a C2 server, Module 20's
+own territory), not for preventing INITIAL unauthorized access (which is
+what ingress rules govern). This module's own <code>egress { ...
+0.0.0.0/0 }</code> pattern on every tier is a genuine, common, REASONABLE
+simplification for a teaching example — a hardened, real production
+environment would likely restrict egress MORE tightly too (e.g., the
+database tier shouldn't need ANY outbound internet access at all in most
+real designs) — but this is a SEPARATE consideration from the module's
+own specific INGRESS-focused auditor, not something
+<code>sg_rule_auditor.py</code> itself checks at all.
+</div>
+
+<h2 id="sec10">10. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 18, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Distinguish security groups from NACLs precisely (stateful vs.
+stateless, instance-level vs. subnet-level, allow-only vs. allow/deny
+with order).</li>
+<li>Explain precisely why security-group references are structurally
+safer than CIDR blocks, using the autoscaling-instance-churn scenario.</li>
+<li>Trace <code>audit_security_group()</code>'s logic by hand against a
+new, hypothetical security group definition.</li>
+<li>Explain how Terraform infers resource creation order purely from
+attribute references, and when <code>depends_on</code> is needed
+instead.</li>
+<li>Explain precisely why the NAT gateway must live in the public
+subnet, reasoning from the public/private route-table distinction.</li>
+<li>Explain why the load balancer's health check requires CONSECUTIVE
+failures/successes rather than reacting to a single check.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 18 shifts to network forensics, and assumes you're
+comfortable with cloud infrastructure's own logging/monitoring
+touchpoints as one more potential evidence source alongside the
+packet-capture material that module focuses on directly.</p>
+
+</body>
+</html>
