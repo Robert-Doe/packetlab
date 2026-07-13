@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 21 Tutorial — Research Methodology & CTF Practice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 21 — Tutorial: Research Methodology & CTF Practice</h1>
+<p>Goal: practice the actual WORKFLOW behind two things every security
+researcher eventually does — solving a CTF-style challenge end to end
+(find it, prove it, submit it) and writing a research finding that
+stands on its own (a question, related work, method, evidence,
+limitations) — plus the ethics of disclosing what you find responsibly.</p>
+
+<h2>Step 1 — solve this module's own CTF challenge</h2>
+<pre>cd module-21-research-methodology-ctf-practice
+wsl
+gcc -O0 -o ctf_challenge/crackme ctf_challenge/crackme.c
+python3 ctf_challenge/solve_crackme.py ctf_challenge/crackme --verify</pre>
+<div class="expect"><strong>Expected:</strong>
+<code>key=0x37  flag='flag{r3vers1ng_1s_ju5t_r34d1ng}'</code>, followed
+by the binary itself confirming <code>CORRECT</code> — confirmed during
+this module's build. This is the same single-byte-XOR-brute-force
+technique from Module 20's <code>string_deobfuscator.py</code>, applied
+to a differently-shaped problem: a comparison target instead of a
+network address.</div>
+
+<h2>Step 2 — cross-language check</h2>
+<pre>node ctf_challenge/solve_crackme.js ctf_challenge/crackme</pre>
+<div class="expect"><strong>Expected:</strong> the identical key and flag
+recovered, confirmed byte-identical to the Python output during this
+module's build.</div>
+<div class="note"><strong>A genuine environment limitation:</strong>
+running <code>node solve_crackme.js ... --verify</code> from WINDOWS
+Node cannot execute the compiled binary — it's a Linux ELF file (WSL's
+gcc built it), and Windows can't run ELF binaries directly. This isn't a
+bug; run <code>--verify</code> from within WSL instead (where Python is
+available by default), per <code>DECISIONS.md</code>.</div>
+
+<h2>Step 3 — validate a research log</h2>
+<pre>python research_notes_checker.py sample_research_log_complete.json
+python research_notes_checker.py sample_research_log_incomplete.json</pre>
+<div class="expect"><strong>Expected:</strong> 100% completeness / no
+gaps for the complete sample; 0% and 7 specific, named gaps for the
+incomplete sample — confirmed during this module's build, and confirmed
+identical between Python and Node.</div>
+
+<h2>Step 4 — validate a disclosure timeline</h2>
+<pre>python disclosure_timeline_checker.py sample_disclosure_complete.json
+python disclosure_timeline_checker.py sample_disclosure_incomplete.json</pre>
+<div class="expect"><strong>Expected:</strong> the complete sample
+reports 100% compliant with no issues; the incomplete sample reports 3
+specific, real date-arithmetic violations (no vendor contact at all,
+disclosure only 10 days after contact with no patch, disclosure 14 days
+BEFORE the patch was actually released) — confirmed during this module's
+build with real date math, and confirmed identical between Python and
+Node.</div>
+
+<h2>Step 5 — read the process guides</h2>
+<p>Read <code>literature_review_template.md</code> and
+<code>ctf_progression_guide.md</code> — the former is a template to fill
+in with your OWN research question; the latter honestly maps which CTF
+categories this course already prepared you for, and which (pwn/web
+specifically) require dedicated further study beyond this course's
+scope.</p>
+
+<h2>Exercises before the capstone (or your own comprehensive exam prep)</h2>
+<ol>
+  <li><strong>Write your own research log.</strong> Pick a real,
+      specific question this course raised but didn't fully answer (for
+      example: "does the jitter-ratio beaconing detector from Module 14
+      generalize to randomized-interval C2 traffic, or only fixed-interval?").
+      Fill in <code>literature_review_template.md</code>'s structure for
+      real, and run <code>research_notes_checker.py</code> against it
+      until it reports 100%.</li>
+  <li><strong>Extend crackme.c with a second, harder check.</strong>
+      Add a length check or a simple checksum requirement BEFORE the
+      string comparison, so a naive submitted guess fails faster/differently.
+      Confirm <code>solve_crackme.py</code> still recovers the real flag
+      correctly (the underlying obfuscation technique is unchanged) and
+      that <code>--verify</code> still confirms it.</li>
+  <li><strong>Write a real disclosure timeline for a hypothetical
+      finding.</strong> Using <code>sample_disclosure_incomplete.json</code>'s
+      CVD-2026-004 entry as a starting point (disclosed too early, no
+      patch), rewrite its dates to be genuinely compliant, and confirm
+      <code>disclosure_timeline_checker.py</code> reports zero issues.</li>
+</ol>
+
+<div class="note">
+<strong>Where this leaves you:</strong> Modules 00a through 21 have now
+covered discrete math and C fundamentals; the full network stack from
+physical layer to application protocols; infrastructure, cryptography,
+monitoring, offensive basics, web security concepts, cloud networking,
+forensics, malware analysis, and now research/CTF methodology. Module 19's
+capstone remains the actual integration exercise — this module's tools
+(the research-log and disclosure checkers specifically) are meant to be
+reused there and beyond, for your real comprehensive exam preparation.
+</div>
+
+</body>
+</html>

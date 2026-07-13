@@ -1,0 +1,28 @@
+{
+  "disclosures": [
+    {
+      "id": "CVD-2026-003",
+      "description": "SQL injection found in a hobby project's login form; researcher posted it to a public forum immediately.",
+      "discovery_date": "2026-04-01",
+      "vendor_contacted_date": null,
+      "patch_released_date": null,
+      "public_disclosure_date": "2026-04-01"
+    },
+    {
+      "id": "CVD-2026-004",
+      "description": "Auth bypass in a router's admin API, disclosed 10 days after vendor contact with no patch yet.",
+      "discovery_date": "2026-05-01",
+      "vendor_contacted_date": "2026-05-02",
+      "patch_released_date": null,
+      "public_disclosure_date": "2026-05-12"
+    },
+    {
+      "id": "CVD-2026-005",
+      "description": "XSS in a vendor dashboard, publicly disclosed before the patch was actually released.",
+      "discovery_date": "2026-06-01",
+      "vendor_contacted_date": "2026-06-03",
+      "patch_released_date": "2026-09-15",
+      "public_disclosure_date": "2026-09-01"
+    }
+  ]
+}

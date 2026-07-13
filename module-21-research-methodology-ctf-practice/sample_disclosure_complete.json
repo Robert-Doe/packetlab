@@ -1,0 +1,20 @@
+{
+  "disclosures": [
+    {
+      "id": "CVD-2026-001",
+      "description": "Authenticated command injection in a home NVR web admin panel, found during authorized personal-device testing.",
+      "discovery_date": "2026-01-10",
+      "vendor_contacted_date": "2026-01-12",
+      "patch_released_date": "2026-03-20",
+      "public_disclosure_date": "2026-03-25"
+    },
+    {
+      "id": "CVD-2026-002",
+      "description": "Default credential issue in a smart-plug firmware, vendor unresponsive for over 90 days.",
+      "discovery_date": "2026-02-01",
+      "vendor_contacted_date": "2026-02-03",
+      "patch_released_date": null,
+      "public_disclosure_date": "2026-05-10"
+    }
+  ]
+}

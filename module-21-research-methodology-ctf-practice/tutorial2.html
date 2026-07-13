@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 21 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 21 — Deep Theory: Research Methodology, Disclosure Ethics, and the CTF Mindset</h1>
+
+<h2>1. Command-by-Command</h2>
+
+<h3><code>python solve_crackme.py ctf_challenge/crackme --verify</code></h3>
+<p><strong>What it does:</strong> reads the compiled binary's raw bytes,
+brute-forces all 255 non-zero single-byte XOR keys against a
+<code>flag{...}</code>-shaped regular expression, and — critically —
+does not stop there. The <code>--verify</code> step invokes the ACTUAL
+challenge binary with the recovered candidate flag and checks its real
+exit code. This closes the gap between "I computed something that looks
+right" and "I confirmed it is right" — a distinction with real
+consequences: a regex could coincidentally match a wrong string in a
+large enough search space, and only the challenge's own logic is
+authoritative about what the real answer is.</p>
+
+<h3><code>python research_notes_checker.py your_log.json</code></h3>
+<p><strong>What it does:</strong> the same completeness-and-consistency
+validation pattern as Module 19's <code>capstone_checker.py</code>,
+applied to a research writeup's STRUCTURE — does it have a real
+question, cited related work with stated relevance, a reproducible
+methodology, an ethics statement, evidence-backed results, and stated
+limitations. It cannot judge whether your research is GOOD; it can only
+confirm the standard structural pieces are present.</p>
+
+<h3><code>python disclosure_timeline_checker.py your_timeline.json</code></h3>
+<p><strong>What it does:</strong> performs REAL date arithmetic
+(parsing ISO dates, computing day differences) to check a set of
+disclosure dates against ordering rules (vendor contact must precede
+public disclosure) and the 90-day standard-window CONVENTION — flagging
+deviations as needing explicit justification, not automatically
+condemning them.</p>
+
+<h2>2. What "Falsifiable" Actually Means, Precisely</h2>
+<p>A research question is FALSIFIABLE if there exists some possible
+observation or result that would show the question's implied hypothesis
+is WRONG. "Network security monitoring" is not falsifiable — there's no
+observation that could contradict a topic name. "Does a fixed jitter-ratio
+threshold produce a false-positive rate above 10% against consumer IoT
+traffic?" IS falsifiable — a real measured false-positive rate below 10%
+would directly contradict it. This is the exact property
+<code>research_notes_checker.py</code>'s question-length and
+question-mark checks are crude proxies for — a real comprehensive exam
+committee applies the same falsifiability standard far more rigorously
+than any automated string check could.</p>
+
+<div class="why">
+<strong>Why does falsifiability matter so much in security research
+specifically?</strong> Unfalsifiable claims ("this system is secure")
+are common in security marketing precisely because they can never be
+definitively disproven by any single test — a system that hasn't been
+broken YET is not the same as a system that CAN'T be broken. Falsifiable
+claims ("this system resists attack X, tested Y way, under Z
+conditions") are scoped narrowly enough that a specific test COULD
+disprove them, which is exactly what makes a positive result
+(the claim survived testing) actually meaningful evidence, rather than
+an unfalsifiable claim's meaningless "still standing."
+</div>
+
+<h2>3. Coordinated Vulnerability Disclosure, Formally</h2>
+<table>
+<tr><th>Disclosure model</th><th>Structure</th><th>Tradeoff</th></tr>
+<tr><td>Full disclosure</td><td>Publish immediately, no advance vendor notice</td><td>Forces urgency but leaves users unprotected the moment details are public, before any fix exists</td></tr>
+<tr><td>Coordinated (responsible) disclosure</td><td>Notify vendor privately first; publish publicly only after a fix ships or a reasonable window elapses</td><td>Protects users during the fix window, but depends on the vendor actually acting — hence the standard 90-day norm as a backstop against indefinite vendor silence</td></tr>
+<tr><td>Non-disclosure</td><td>Never publish at all</td><td>Avoids ever tipping off attackers, but also means other researchers/defenders never benefit from the finding, and the vendor may have no external pressure to fix it</td></tr>
+</table>
+<p>The 90-day convention exists specifically to resolve the tension in
+coordinated disclosure: it gives a vendor real time to develop and ship
+a fix, while preventing a vendor from simply never responding and
+indefinitely leaving users unprotected with the researcher unable to
+ever warn anyone. <code>disclosure_timeline_checker.py</code>'s
+framing — a norm to justify deviating from, not an absolute rule —
+reflects that this window is a widely-adopted convention, not a
+universal legal requirement.</p>
+
+<h2>4. The CTF Workflow as a Formal Loop</h2>
+<p>Every CTF challenge, regardless of category, follows the same
+abstract loop: RECOGNIZE (what category/technique does this problem
+resemble?), APPLY (execute the relevant known technique), RECOVER (get a
+candidate answer), VERIFY (confirm it's actually correct, not just
+plausible), SUBMIT. This module's <code>crackme.c</code> exercises this
+loop end to end using a technique you already had (Module 20's XOR
+brute-force) specifically so the loop ITSELF — not the technique — is
+what's being practiced. Real CTF competitiveness comes from having many
+techniques in step 2's toolkit (per
+<code>ctf_progression_guide.md</code>'s category breakdown) and getting
+FAST at steps 1 and 4 — recognizing a challenge's category quickly, and
+verifying an answer's correctness before wasting time on a wrong path.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "What is the relationship
+between a CTF flag-recovery workflow and a formal research
+methodology?" Both are instances of the same underlying epistemic
+structure: form a specific, checkable claim (a flag; a hypothesis),
+gather evidence through a defined, reproducible process (brute-force
+search + binary verification; an experiment), and only accept the claim
+once independently verified (the challenge's own exit code; peer
+review/reproducibility). The surface domains differ completely, but the
+justification structure — claim, method, independent verification — is
+identical, which is precisely why CTF practice is genuine (if narrow)
+preparation for the broader epistemic discipline research and a
+comprehensive exam both require.
+</div>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Falsifiability as a research-question standard</td><td>Direct preparation for comprehensive exam question framing and any real research proposal</td></tr>
+<tr><td>Coordinated disclosure norms and their justified exceptions</td><td>Extends Module 16's authorization-boundary ethics to the post-discovery phase</td></tr>
+<tr><td>The recognize-apply-recover-verify CTF loop</td><td>General applied-security problem-solving methodology, transferable to any category</td></tr>
+<tr><td>Claim-method-verification as a shared epistemic structure</td><td>The connective thread between this module's two halves (CTF + research methodology), and the actual standard a comprehensive exam applies</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 21 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 21 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version — the final one in this course. By the
+end you should be able to trace <code>disclosure_timeline_checker.py</code>'s
+date arithmetic and completeness math by hand, explain precisely why
+<code>solve_crackme.py</code>'s verification step is safe from command
+injection, and articulate the full "recognize → apply → verify" loop
+this module explicitly names as the connective thread of the entire
+course.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">disclosure_timeline_checker.py's date arithmetic, traced completely</a></li>
+<li><a href="#sec2">The completeness percentage's set-based deduplication, precisely</a></li>
+<li><a href="#sec3">Why solve_crackme.py's subprocess call is safe from injection</a></li>
+<li><a href="#sec4">The FLAG_PATTERN regex, decoded completely</a></li>
+<li><a href="#sec5">Why key range starts at 1, not 0</a></li>
+<li><a href="#sec6">Full code walkthrough — check_timeline()'s branching logic</a></li>
+<li><a href="#sec7">Many worked scenarios — hand-checking disclosure timelines</a></li>
+<li><a href="#sec8">Troubleshooting and common confusions</a></li>
+<li><a href="#sec9">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. disclosure_timeline_checker.py's Date Arithmetic, Traced Completely</h2>
+
+<pre>discovery = parse_date(entry["discovery_date"])
+vendor_contacted_d = parse_date(vendor_contacted)
+public_disclosure = parse_date(entry["public_disclosure_date"])
+...
+days_to_disclosure = (public_disclosure - vendor_contacted_d).days</pre>
+
+<div class="scenario">
+<h4>Fully traced: CVD-2026-002's real dates from this module's own sample file</h4>
+<pre>discovery_date: "2026-02-01"
+vendor_contacted_date: "2026-02-03"
+public_disclosure_date: "2026-05-10"
+patch_released_date: null
+
+parse_date() uses datetime.strptime(s, "%Y-%m-%d").date() -- converting
+the STRING into a real Python date OBJECT, specifically so subtraction
+(date - date) performs genuine CALENDAR arithmetic (correctly handling
+different month lengths, leap years, etc.) rather than naive string
+comparison or manual day-counting.
+
+vendor_contacted_d < discovery? Feb 3 < Feb 1? NO -- passes.
+public_disclosure < vendor_contacted_d? May 10 < Feb 3? NO -- passes.
+
+days_to_disclosure = (May 10 2026 - Feb 3 2026).days
+  Feb 3 to Feb 28 (2026 is not a leap year) = 25 days
+  + March (31) + April (30) + May 10 (10) = 25+31+30+10 = 96 days
+
+patch_released is null (no patch) -- check:
+  96 >= STANDARD_WINDOW_DAYS(90)? YES -- no issue raised.
+
+This matches this module's own sample_disclosure_complete.json's
+documented, tested result: "100% fully compliant."</pre>
+</div>
+
+<div class="why">
+<strong>Why does the checker use Python's real <code>date</code>
+objects and their built-in subtraction, rather than manually parsing
+year/month/day and computing day differences by hand?</strong> Manual
+date-difference calculation would need to correctly account for
+VARYING month lengths (28/29/30/31 days), leap years (a real, genuine
+source of off-by-one bugs in hand-rolled date code), and potentially
+year boundaries — Python's <code>date</code> objects handle ALL of this
+correctly and automatically via well-tested standard library code. This
+is a genuinely important, general engineering principle: date/time
+arithmetic is a notorious source of subtle bugs when reimplemented by
+hand (this course's OWN earlier real bug — Module 18's
+int()-vs-round() timestamp discrepancy — is a direct, concrete example
+of exactly this category of subtlety) — always prefer a language's
+built-in, well-tested date arithmetic over hand-rolled day-counting
+whenever it's available.
+</div>
+
+<h2 id="sec2">2. The Completeness Percentage's Set-Based Deduplication, Precisely</h2>
+
+<pre>clean_count = len(entries) - len({
+    i.split("]")[0][1:] for i in all_issues
+})</pre>
+
+<div class="scenario">
+<h4>Fully decoded: what this one dense line actually computes</h4>
+<pre>Each issue string is formatted as: "[CVD-2026-003] No vendor_contacted_date..."
+
+i.split("]")[0]  -- splits on "]", takes the FIRST piece: "[CVD-2026-003"
+  [1:]            -- slices off the leading "[" character: "CVD-2026-003"
+
+So this set comprehension extracts JUST the disclosure ID from EVERY
+issue string, and collects them into a SET -- automatically
+deduplicating, so an entry with THREE separate issues (like
+CVD-2026-005, hypothetically) still contributes only ONE entry to this
+set, not three.
+
+len(entries) - len(this set of DISTINCT flagged IDs)
+  = total disclosures checked MINUS however many DISTINCT disclosures
+    had at least one issue
+  = the count of disclosures with ZERO issues (fully "clean")
+
+This is EXACTLY the same "count categories/entities with issues, not
+raw issue lines" principle Module 19's own capstone_checker.py applied
+(tutorial4.html Section 1 there) -- the SAME underlying pattern,
+independently reapplied to a completely different domain (disclosure
+timelines instead of capstone manifests), which is itself a genuine,
+worth-noticing example of this module's own "recognize and reapply a
+known technique" theme.</pre>
+</div>
+
+<h2 id="sec3">3. Why solve_crackme.py's subprocess Call Is Safe From Injection</h2>
+
+<pre>result = subprocess.run([exec_path, flag], capture_output=True, text=True)</pre>
+
+<div class="why">
+<strong>Why is passing <code>[exec_path, flag]</code> as a LIST safe,
+when <code>flag</code> is DATA THAT CAME FROM THE BINARY ITSELF (in
+principle, attacker-influenceable if a malicious binary were crafted to
+embed a hostile "flag")?</strong> This is the EXACT SAME safety pattern
+Module 08 Section 9.3 covered in depth: <code>subprocess.run()</code>
+called with a LIST of arguments (rather than a single, shell-interpreted
+STRING) does NOT invoke a shell interpreter at all — each list element
+is passed DIRECTLY to the operating system as a literal argument, with
+NO shell metacharacter interpretation (no <code>;</code>, <code>|</code>,
+<code>&&</code>, backticks, or similar shell-injection vectors are ever
+given a chance to be interpreted specially). Even if a maliciously-crafted
+binary's embedded "flag" string contained shell metacharacters
+specifically designed to exploit a careless verification script (a
+genuinely realistic CTF-adjacent threat model — a booby-trapped
+challenge binary), THIS specific list-based invocation pattern is
+structurally immune to that class of attack, precisely because there is
+no shell in the picture to interpret those characters as anything other
+than a literal, inert part of the argument string.
+</div>
+
+<h2 id="sec4">4. The FLAG_PATTERN Regex, Decoded Completely</h2>
+
+<pre>FLAG_PATTERN = re.compile(rb"flag\{[^}]{1,80}\}")</pre>
+
+<table>
+<tr><th>Piece</th><th>Meaning</th></tr>
+<tr><td><code>rb"..."</code></td><td>A RAW BYTES string literal — "raw" means backslashes aren't given special Python-string-escape treatment (so <code>\{</code> means a literal backslash-then-brace in the regex engine's own syntax, not a Python escape sequence); "bytes" (the <code>b</code> prefix) means this pattern matches against raw BYTES data, not a decoded text string — appropriate since the input here is a raw compiled binary's bytes, not text</td></tr>
+<tr><td><code>flag\{</code></td><td>The LITERAL characters "flag{" — the brace is escaped (<code>\{</code>) because an UNescaped <code>{</code> has special meaning in regex syntax (repetition counts, like <code>a{3}</code>) that isn't intended here</td></tr>
+<tr><td><code>[^}]{1,80}</code></td><td>Between 1 and 80 characters, each one NOT a closing brace (<code>[^}]</code> is a NEGATED character class — "any character except <code>}</code>") — this is what captures the flag's actual CONTENT, stopping automatically at the first closing brace rather than needing to know the exact content in advance</td></tr>
+<tr><td><code>\}</code></td><td>The literal closing brace, again escaped for the same reason as the opening one</td></tr>
+</table>
+
+<div class="brain">
+<strong>Brain power:</strong> why cap the content match at 80 characters
+(<code>{1,80}</code>) rather than using an unbounded <code>+</code> or
+<code>*</code>? An unbounded match (<code>[^}]+</code>, matching ANY
+number of non-brace characters) could, in a PATHOLOGICAL case (a binary
+containing "flag{" with NO subsequent closing brace anywhere in the
+rest of the file), match an ENORMOUS, meaningless span of bytes all the
+way to the end of the file — clearly not a real flag. Bounding the
+match to a reasonable maximum length (80, comfortably larger than any
+real flag string this course's own crackme uses) prevents this
+degenerate case from producing a nonsensical, oversized "match," a
+genuinely practical defensive habit when writing pattern-matching code
+against UNTRUSTED or arbitrary binary data.
+</div>
+
+<h2 id="sec5">5. Why Key Range Starts At 1, Not 0</h2>
+
+<pre>for key in range(1, 256):</pre>
+
+<div class="why">
+<strong>Why exclude key=0 from the brute-force search entirely?</strong>
+XORing ANY byte with 0 leaves it COMPLETELY UNCHANGED
+(<code>b ^ 0 == b</code>, for any byte <code>b</code> — Module 00a
+Section 4.3's own XOR truth table: <code>0 XOR anything = anything</code>).
+Trying key=0 would be EQUIVALENT to searching the RAW, UNMODIFIED binary
+bytes directly for a <code>flag{...}</code> pattern — a completely
+legitimate thing to check in principle, but NOT a real "decoding" step
+at all (there's no obfuscation being reversed). Since this module's own
+<code>crackme.c</code> genuinely DOES obfuscate its flag (Module 21's
+own <code>DECISIONS.md</code> confirms this directly), key=0 would never
+find anything meaningful here — excluding it is a small, deliberate
+efficiency choice (254 checks instead of 255) reflecting the KNOWN fact
+that a real single-byte XOR obfuscation, by definition, must use a
+NON-ZERO key to actually change anything at all.
+</div>
+
+<h2 id="sec6">6. Full Code Walkthrough — check_timeline()'s Branching Logic</h2>
+
+<pre>if not vendor_contacted:
+    issues.append(...)
+    return issues   # <-- EARLY RETURN, skips all subsequent checks</pre>
+
+<div class="brain">
+<strong>Brain power:</strong> why does the "no vendor contact at all"
+case RETURN IMMEDIATELY, rather than continuing to check the remaining
+conditions (90-day window, patch timing) too? Every SUBSEQUENT check in
+this function fundamentally depends on <code>vendor_contacted_d</code>
+actually EXISTING as a real date to compare against (computing
+<code>days_to_disclosure = (public_disclosure -
+vendor_contacted_d).days</code> would crash with a
+<code>TypeError</code> if <code>vendor_contacted_d</code> were
+<code>None</code>). Rather than adding a defensive None-check to EVERY
+subsequent comparison individually, the function short-circuits with an
+EARLY RETURN the moment it detects the one condition that would make
+every later check meaningless or impossible to compute — a genuinely
+common, sensible "handle the degenerate case first and exit early"
+structuring pattern, avoiding both a crash AND a tangle of repeated
+None-guards throughout the rest of the function.
+</div>
+
+<h2 id="sec7">7. Many Worked Scenarios — Hand-Checking Disclosure Timelines</h2>
+
+<div class="scenario">
+<h4>Scenario: hand-check a NEW, hypothetical timeline against every rule</h4>
+<pre>discovery_date: 2026-01-01
+vendor_contacted_date: 2025-12-28   <-- BEFORE discovery!
+public_disclosure_date: 2026-01-15
+patch_released_date: 2026-01-10
+
+Check 1: vendor_contacted_d < discovery?
+  Dec 28 2025 < Jan 1 2026? YES -- ISSUE: "impossible timeline"
+
+Check 2: public_disclosure < vendor_contacted_d?
+  Jan 15 2026 < Dec 28 2025? NO -- passes.
+
+Check 3 (patch WAS released, so the patch-lead-time branch runs):
+  lead_days = (Jan 15 - Jan 10).days = 5
+  5 < -PATCH_LEAD_TOLERANCE_DAYS(-3)? NO (5 is not less than -3) -- passes.
+
+Total: 1 issue found (the impossible-timeline check) -- demonstrating
+that even a "mostly reasonable-looking" timeline can hide a genuine
+data-entry error (contacting the vendor BEFORE the stated discovery
+date) that only a systematic, automated check reliably catches --
+exactly the value proposition of building a checker instead of
+eyeballing dates by hand.</pre>
+</div>
+
+<h2 id="sec8">8. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming the 90-day check treats EVERY early
+disclosure as equally problematic.</strong> Re-read Section 3 of this
+module's own <code>DECISIONS.md</code>: the checker's language
+deliberately frames early disclosure as "deviates from standard CVD
+norms" requiring EXPLICIT JUSTIFICATION — not an unconditional
+violation. A real, legitimate early disclosure (active exploitation
+already observed in the wild, an unresponsive vendor after repeated
+attempts) is a DIFFERENT, better-justified situation than an
+accidental, undocumented early disclosure — the checker cannot
+distinguish these from the dates ALONE, which is precisely why its own
+issue message explicitly calls for the reason to be "documented
+explicitly, not implicit," rather than treating the flag itself as a
+final verdict.
+</div>
+
+<h2 id="sec9">9. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>This is the final recap of the entire course. Before considering
+yourself ready, you should be able to, from memory, with no notes:</strong>
+<ul>
+<li>Trace <code>disclosure_timeline_checker.py</code>'s date arithmetic
+and completeness-percentage calculation by hand on a new timeline.</li>
+<li>Explain precisely why <code>subprocess.run()</code> with a LIST
+argument is structurally immune to shell injection, tracing back to
+Module 08's original explanation of the same principle.</li>
+<li>Decode the FLAG_PATTERN regex completely, including why the match
+length is bounded.</li>
+<li>Explain why key=0 is correctly excluded from a single-byte XOR
+brute-force search, reasoning from XOR's own truth table (Module 00a).</li>
+<li>Articulate, in your own words, the "recognize a known technique →
+apply it to a new problem → verify the result independently" loop this
+module names explicitly — and give THREE examples of this loop
+recurring across DIFFERENT modules in this course (VLSM reused from
+Module 04 into Module 09; XOR brute-forcing reused from Module 20 into
+this module's own crackme; the completeness-percentage pattern reused
+from Module 19 into this module's own disclosure checker).</li>
+</ul>
+</div>
+
+<p>This is the last deep-dive file in the course. If you can explain
+every recap item above, across all 22 modules, fluently and without
+notes — you are genuinely ready for the comprehensive exam this entire
+course was built for.</p>
+
+</body>
+</html>

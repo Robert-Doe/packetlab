@@ -1,0 +1,15 @@
+{
+  "research_question": "Malware beaconing detection",
+  "related_work": [
+    {
+      "citation": "Some blog post about beaconing"
+    }
+  ],
+  "methodology": {
+    "description": "Ran some scripts and looked at the results."
+  },
+  "results": {
+    "summary": "Beaconing was detected."
+  },
+  "limitations": []
+}
