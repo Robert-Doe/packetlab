@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 01 — Your Network, Introspected</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; line-height: 1.5; color: #1a1a1a; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 24px; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 0.92rem; }
+  th { background: #f4f4f4; }
+  .up { color: #1a7a1a; font-weight: bold; }
+  .down { color: #999; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  #raw { background: #111; color: #7CFC00; padding: 14px; border-radius: 6px; overflow-x: auto; max-height: 300px; }
+  nav a { margin-right: 16px; }
+  button { font-size: 0.95rem; padding: 6px 14px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<nav><a href="/tutorial.html">Tutorial</a></nav>
+
+<h1>Your Network, Introspected</h1>
+<p>Everything below came from your own machine's own network stack — no
+packet left your NIC to produce this page. This is what your OS already
+knows about your network before you send a single byte anywhere.</p>
+
+<button onclick="load()">Refresh</button>
+
+<h2>Interfaces</h2>
+<table id="tbl-interfaces"><thead>
+  <tr><th>Name</th><th>Status</th><th>Speed (Mbps)</th><th>MTU</th><th>Addresses</th></tr>
+</thead><tbody></tbody></table>
+
+<h2>Default Gateway</h2>
+<p id="gateway">loading…</p>
+
+<h2>DNS Servers</h2>
+<ul id="dns"></ul>
+
+<h2>ARP Table (your recent neighbors on this segment)</h2>
+<table id="tbl-arp"><thead><tr><th>Raw entry</th></tr></thead><tbody></tbody></table>
+
+<h2>Raw JSON</h2>
+<pre id="raw">loading…</pre>
+
+<script>
+async function load() {
+  const res = await fetch('/api/netinfo');
+  const data = await res.json();
+
+  const ifaceBody = document.querySelector('#tbl-interfaces tbody');
+  ifaceBody.innerHTML = '';
+  for (const iface of data.interfaces) {
+    const addrs = iface.addresses.map(a => `${a.address}${a.netmask ? ' / ' + a.netmask : ''}`).join('<br>');
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${iface.name}</td>
+      <td class="${iface.is_up ? 'up' : 'down'}">${iface.is_up === null ? 'unknown' : (iface.is_up ? 'UP' : 'down')}</td>
+      <td>${iface.speed_mbps ?? '-'}</td>
+      <td>${iface.mtu ?? '-'}</td>
+      <td>${addrs || '-'}</td>`;
+    ifaceBody.appendChild(row);
+  }
+
+  document.getElementById('gateway').textContent = data.default_gateway || '(none found)';
+
+  const dnsList = document.getElementById('dns');
+  dnsList.innerHTML = '';
+  if (data.dns_servers.length === 0) {
+    dnsList.innerHTML = '<li>(none found)</li>';
+  } else {
+    for (const server of data.dns_servers) {
+      const li = document.createElement('li');
+      li.textContent = server;
+      dnsList.appendChild(li);
+    }
+  }
+
+  const arpBody = document.querySelector('#tbl-arp tbody');
+  arpBody.innerHTML = '';
+  if (data.arp_table.length === 0) {
+    arpBody.innerHTML = '<tr><td>(empty — try pinging your gateway first, see tutorial)</td></tr>';
+  } else {
+    for (const entry of data.arp_table) {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${entry}</td>`;
+      arpBody.appendChild(row);
+    }
+  }
+
+  document.getElementById('raw').textContent = JSON.stringify(data, null, 2);
+}
+
+load();
+</script>
+
+</body>
+</html>

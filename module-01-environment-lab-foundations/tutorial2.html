@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 01 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 01 — Deep Theory: Every Command, Explained From Zero</h1>
+
+<p>This chapter assumes you've never typed any of these commands before
+and don't know why they exist. Every command in <code>tutorial.html</code>
+is walked through here — what it does, why it exists, what would go wrong
+without it. Read this BEFORE you consider Module 01 finished.</p>
+
+<h2>1. Command-by-Command: Setting Up the Python Environment</h2>
+
+<h3><code>python -m venv venv</code></h3>
+<p><strong>What it does:</strong> creates a new, isolated Python
+installation-within-your-installation, in a folder named <code>venv</code>.
+<strong>Why it exists:</strong> without it, every Python package you
+<code>pip install</code> goes into ONE shared, global location on your
+computer, used by every Python project you ever run. Two projects that
+need different, incompatible versions of the same package (a very common
+real-world situation) would break each other. A "virtual environment" is
+a self-contained folder with its own copy of the Python interpreter
+executable and its own separate package storage — installing something
+into it can never affect any other project, and deleting the folder
+removes everything cleanly, with zero trace left on your system.</p>
+<div class="why">
+<strong>Why this matters for you specifically:</strong> this course has
+19+ modules, several of which install different packages
+(<code>psutil</code> here, <code>cryptography</code> in Module 11/13,
+<code>flask</code> in several). Without virtual environments, installing
+one module's dependencies could silently break another's, or leave you
+unsure which packages any given module actually needs. Every module in
+this course creates its OWN <code>venv</code> folder specifically so they
+never interfere with each other.
+</div>
+
+<h3><code>venv\Scripts\activate</code> (Windows) / <code>source venv/bin/activate</code> (Mac/Linux)</h3>
+<p><strong>What it does:</strong> modifies your CURRENT terminal session
+(only — this doesn't change anything permanently) so that typing
+<code>python</code> or <code>pip</code> uses the venv's own copies instead
+of your system-wide Python installation. It does this by temporarily
+prepending the venv's own executable folder to your shell's
+<code>PATH</code> environment variable — the list of folders your shell
+searches, in order, when you type a command name.</p>
+<div class="brain">
+<strong>Brain power:</strong> how would you PROVE activation actually
+changed anything, rather than just trusting the prompt prefix
+(<code>(venv)</code>) that appears? Run <code>where python</code>
+(Windows) or <code>which python</code> (Mac/Linux) before and after
+activating — the reported path changes from your system Python
+(something like <code>C:\Python312\python.exe</code>) to a path INSIDE
+your project's <code>venv</code> folder. That's the actual, verifiable
+mechanism — the prompt prefix is just a visual reminder of a PATH change
+that already happened.
+</div>
+
+<h3><code>pip install -r requirements.txt</code></h3>
+<p><strong>What it does:</strong> <code>pip</code> is Python's package
+installer — it downloads packages from PyPI (the Python Package Index, a
+public repository) and installs them into whichever Python environment is
+currently active. The <code>-r requirements.txt</code> flag tells it "read
+the list of packages to install from this file" instead of naming one
+package directly on the command line — <code>requirements.txt</code>
+contains one package name (and often a pinned version) per line, in this
+module's case just <code>flask==3.0.3</code>.</p>
+<div class="why">
+<strong>Why pin an exact version (<code>==3.0.3</code>) instead of just
+"flask"?</strong> Without a pinned version, <code>pip install flask</code>
+installs whatever the CURRENT latest version is — which could be
+different for you today than it was when this course was built, and
+could behave differently (a new major version can change behavior or
+remove features). Pinning the exact version tested guarantees you get the
+exact same behavior this course's own testing confirmed, every time,
+regardless of when you run it.
+</div>
+
+<h3><code>python netinfo_server.py</code></h3>
+<p><strong>What it does:</strong> runs the Python interpreter (from your
+now-activated venv) against this specific file, executing it top to
+bottom as a program. Because the file's bottom section is guarded by
+<code>if __name__ == "__main__":</code>, this line only runs when the file
+is executed DIRECTLY (as opposed to imported by another Python file) —
+this is a very common Python idiom you'll see in nearly every script in
+this course.</p>
+
+<h2>2. Command-by-Command: The OS-Level Verification Commands</h2>
+
+<p>Step 3 of the tutorial asks you to run several native OS commands to
+verify the dashboard's numbers independently. Here's precisely what each
+one does and why it exists.</p>
+
+<h3><code>ipconfig /all</code> (Windows) / <code>ifconfig</code> or <code>ip addr</code> (Mac/Linux)</h3>
+<p><strong>What it does:</strong> asks your OWN operating system kernel
+to report the current configuration of every network interface it knows
+about — IP address, subnet mask, MAC address, whether the interface is up
+or down. This is READ-ONLY; it sends no traffic anywhere. The <code>/all</code>
+flag on Windows specifically requests the FULL report (DNS servers,
+DHCP lease info, default gateway) rather than the abbreviated default
+view, which only shows IP/mask/gateway.</p>
+<div class="brain">
+<strong>Brain power:</strong> why does this command need no network
+access at all, and works identically whether or not you're actually
+connected to the internet? Because it's reading configuration your OS
+ALREADY HAS in memory — assigned during your last DHCP lease (Module 08
+territory) or set statically — not asking anything external. This is
+exactly why <code>netinfo_server.py</code>/<code>.js</code> could build a
+dashboard around this data with zero outbound network calls.
+</div>
+
+<h3><code>ping 192.168.0.1</code></h3>
+<p><strong>What it does:</strong> sends an ICMP (Internet Control Message
+Protocol) "Echo Request" packet to the target address and waits for an
+"Echo Reply." ICMP is a companion protocol to IP specifically designed
+for network diagnostics and error reporting — it's not TCP, not UDP, a
+separate protocol entirely, layered directly on top of IP.</p>
+<div class="why">
+<strong>Why ping your gateway specifically, and why should it be fast
+(sub-5ms)?</strong> Your gateway (router) is exactly ONE physical hop away
+on your own LAN — the request never leaves your house, isn't queued
+behind any internet congestion, and involves no routing decisions beyond
+"is this destination on my local segment." A slow ping to your own
+gateway would indicate a local problem (Wi-Fi interference, an
+overloaded router) — completely different territory from a slow ping to
+something across the internet, where distance and congestion are
+expected contributors.
+</div>
+
+<h3><code>tracert 8.8.8.8</code> (Windows) / <code>traceroute 8.8.8.8</code> (Mac/Linux)</h3>
+<p><strong>What it does:</strong> discovers every router (hop) between
+your machine and the destination, one at a time, by exploiting the IP
+"Time To Live" (TTL) field. It sends a packet with TTL=1; the first
+router along the path decrements TTL to 0, DROPS the packet (per IP
+spec, since TTL=0 means "this packet has traveled too many hops, likely
+stuck in a routing loop"), and sends back an ICMP "Time Exceeded" message
+identifying itself. The tool then sends TTL=2, discovering the SECOND
+hop, and so on, until a packet actually reaches the destination.</p>
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain, mechanically, how
+traceroute discovers the path to a destination without any special
+cooperation from intermediate routers." Answer: it exploits the standard,
+mandatory TTL-decrement-and-drop behavior every IP router already
+performs regardless of traceroute's existence — traceroute isn't asking
+routers for anything special; it's deliberately triggering the same
+"TTL expired" error condition at each increasing distance and reading the
+identifying reply each triggering router sends back. This is a clever
+REPURPOSING of an existing, unrelated mechanism (loop prevention), not a
+dedicated diagnostic protocol feature.
+</div>
+
+<h3><code>arp -a</code></h3>
+<p><strong>What it does:</strong> displays your machine's ARP (Address
+Resolution Protocol) cache — the table mapping IP addresses to MAC
+addresses for devices your machine has recently communicated with on
+your local network segment. Module 03 covers ARP's actual mechanism in
+full depth; for now, understand that this cache only contains devices
+you've talked to RECENTLY (entries expire), which is exactly why Step 4
+of the tutorial has you ping an unfamiliar device to generate a fresh entry.</p>
+
+<h2>3. Why psutil for Interfaces, But Not for Gateway/DNS</h2>
+
+<p><code>netinfo_server.py</code> uses the <code>psutil</code> library for
+interface data but falls back to parsing <code>ipconfig /all</code>'s TEXT
+OUTPUT for gateway and DNS servers. This split isn't arbitrary — it
+reflects a real, structural fact about how operating systems expose
+information:</p>
+<div class="why">
+<strong>The real reason:</strong> interface configuration (IP address,
+netmask, up/down state, MTU) is exposed by every major OS through a
+well-defined KERNEL API that libraries like psutil can call directly and
+get back structured data (numbers, not text to parse). Routing table and
+DNS resolver configuration are ALSO real OS state, but historically,
+no OS vendor built an equally universal structured API for reading them
+— the "official," most portable way to get this information has
+remained "run the same command-line tool a human would use, and parse
+its text output," which is precisely why both the Python AND the Node
+implementations, despite being completely different languages using
+completely different libraries for interfaces, both fall back to parsing
+<code>ipconfig /all</code>'s text for gateway/DNS. This isn't a
+limitation of either language — it's a genuine gap in what operating
+systems expose as a structured, callable API.
+</div>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Virtual environments, pip, dependency pinning</td><td>Every subsequent Python-based module in this course</td></tr>
+<tr><td>ICMP (ping)</td><td>Module 05 (traceroute/routing), Module 10 (firewall behavior toward ICMP)</td></tr>
+<tr><td>TTL-based hop discovery</td><td>Module 05's routing tables, Module 18's forensic reconstruction</td></tr>
+<tr><td>ARP cache as a live, expiring table</td><td>Module 03's full ARP mechanism and spoofing discussion</td></tr>
+<tr><td>Structured kernel APIs vs. text-parsed CLI output</td><td>A recurring theme anywhere this course reads OS state (Module 09's home lab tooling, Module 14's log collection)</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

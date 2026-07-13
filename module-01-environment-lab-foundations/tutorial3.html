@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 01 — Exam Practice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.6; color: #1a1a1a; }
+  h1 { border-bottom: 4px solid #222; padding-bottom: 10px; }
+  details { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  summary { font-weight: 600; cursor: pointer; }
+  .answer { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; font-family: "SFMono-Regular", Consolas, monospace; }
+  nav a { margin-right: 16px; }
+  .instructions { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">← Deep Theory</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 01 — Exam Practice</h1>
+<div class="instructions">Answer out loud before revealing each answer.</div>
+
+<details>
+<summary>Q1. What specific problem do Python virtual environments solve, and what mechanism do they use to solve it?</summary>
+<div class="answer">
+<strong>A:</strong> They solve dependency isolation between projects --
+without one, all Python packages install into one shared global location,
+so two projects needing different, incompatible versions of the same
+package would conflict. The mechanism: a venv is a self-contained folder
+with its own Python interpreter and package storage; "activating" it
+temporarily prepends that folder to your shell's PATH so `python`/`pip`
+resolve to the venv's own copies instead of the system-wide installation.
+</div>
+</details>
+
+<details>
+<summary>Q2. Why does requirements.txt pin an exact version (flask==3.0.3) instead of just naming the package?</summary>
+<div class="answer">
+<strong>A:</strong> Without a pinned version, installation pulls whatever
+the CURRENT latest version is at install time, which could differ across
+machines or across time and could behave differently due to breaking
+changes in newer releases. Pinning guarantees identical, reproducible
+behavior regardless of when or where the install happens.
+</div>
+</details>
+
+<details>
+<summary>Q3. Explain, mechanically, how traceroute discovers each hop along a path without any special protocol support from routers.</summary>
+<div class="answer">
+<strong>A:</strong> It exploits ordinary, mandatory IP router behavior:
+every router decrements a packet's TTL field and drops it (sending back
+an ICMP "Time Exceeded" message identifying itself) when TTL reaches 0.
+Traceroute sends packets with increasing TTL values (1, 2, 3, ...), so
+the packet with TTL=N expires at exactly the Nth router along the path,
+revealing that router's identity through the resulting ICMP error --
+routers require no traceroute-specific support at all; they're just doing
+what IP loop-prevention already requires of them.
+</div>
+</details>
+
+<details>
+<summary>Q4. Why is a fast (sub-5ms) ping to your own home router meaningfully different evidence than a fast ping to a remote internet host?</summary>
+<div class="answer">
+<strong>A:</strong> Your gateway is exactly one physical hop away on your
+own LAN -- the request never leaves your local network, faces no internet
+routing or congestion, and involves at most a single switch/AP in the
+path. A ping to a remote host crosses many additional hops (Module 05
+territory), each adding latency and each a potential source of delay --
+so a slow ping to your gateway specifically indicates a LOCAL problem
+(Wi-Fi interference, router overload), while a slow ping to a remote host
+could have many possible causes unrelated to your own network.
+</div>
+</details>
+
+<details>
+<summary>Q5. Why does an ARP cache entry disappear if you don't ping that device for a while, and why does this matter for what a fresh port scan or network scan would reveal about "who's on the network"?</summary>
+<div class="answer">
+<strong>A:</strong> ARP cache entries have a finite expiration timer
+(commonly a few minutes, OS-dependent) specifically because network
+membership changes over time -- a device that leaves the network (or
+changes its MAC, e.g. a new device took over that IP) shouldn't be cached
+forever as if it were still there. This matters practically because your
+ARP cache at any given moment only reflects RECENT activity, not a
+complete picture of every device currently on the network -- a security
+scan relying solely on ARP cache contents (rather than actively probing)
+would systematically miss quiet devices that haven't communicated
+recently.
+</div>
+</details>
+
+<details>
+<summary>Q6. Both netinfo_server.py and netinfo.js parse ipconfig's TEXT OUTPUT for gateway/DNS but use structured APIs for interface data. Explain why this split exists, at the OS level, rather than dismissing it as a code-quality shortcut.</summary>
+<div class="answer">
+<strong>A:</strong> Interface configuration (IP, netmask, up/down state)
+is exposed by essentially every major OS through a well-defined kernel
+API that any language's networking library can call directly and receive
+structured data from. Routing table and DNS resolver configuration are
+also real OS state, but no equally universal structured API exists across
+platforms for reading them -- the most portable available method remains
+parsing the same command-line tool's text output a human would read,
+which is why BOTH a completely different language (Python vs. Node) fall
+back to the identical strategy for exactly these two values and no others.
+</div>
+</details>
+
+<details>
+<summary>Q7. Synthesis: if you were designing a new operating system's networking API from scratch, what lesson from this module would you apply to avoid the gap Python and Node both hit?</summary>
+<div class="answer">
+<strong>A:</strong> Expose routing table and DNS resolver configuration
+through the same kind of structured, directly-callable kernel API used
+for interface configuration, rather than requiring every downstream tool
+and language to shell out to a human-oriented command-line utility and
+parse its text output. A model answer should recognize that this gap is
+a real, historical API design inconsistency across mainstream operating
+systems, not an unavoidable technical necessity -- some newer OS
+subsystems (e.g., Linux's netlink interface, used by tools like `ip route`
+under the hood) DO expose routing information in a structured,
+machine-readable way, which is worth naming if you're familiar with it.
+</div>
+</details>
+
+</body>
+</html>

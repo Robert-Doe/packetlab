@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 01 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 01 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. <code>tutorial.html</code> tells you
+what to run. <code>tutorial2.html</code> explains each command's purpose.
+This document goes one level deeper still: it explains every CONCEPT
+underneath every command from a standing start — assuming you have never
+configured a network, never read a routing table, and don't yet have a
+mental model for what "the network" physically is. It is intentionally
+long. Read it in more than one sitting if you need to. The goal is that
+by the end, when someone says "default gateway" or "ARP cache" in your
+comprehensive exam, you don't just recognize the term — you can derive
+what it means and why it has to exist, from first principles, live, out
+loud.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">What "the network" physically is, before any protocol talk</a></li>
+<li><a href="#sec2">IP addresses, from absolute zero</a></li>
+<li><a href="#sec3">MAC addresses, from absolute zero</a></li>
+<li><a href="#sec4">Subnet masks and what "/24" actually means</a></li>
+<li><a href="#sec5">The default gateway — a packet's full journey, two ways</a></li>
+<li><a href="#sec6">DNS servers — what "resolving a name" actually means</a></li>
+<li><a href="#sec7">The ARP cache — a full narrative walkthrough</a></li>
+<li><a href="#sec8">Every command, re-explained with many more scenarios</a></li>
+<li><a href="#sec9">Full code walkthrough — netinfo_server.py, line by line</a></li>
+<li><a href="#sec10">Full code walkthrough — netinfo.js, line by line</a></li>
+<li><a href="#sec11">Troubleshooting scenarios you will actually hit</a></li>
+<li><a href="#sec12">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. What "The Network" Physically Is, Before Any Protocol Talk</h2>
+
+<p>Before a single acronym, get the physical picture right, because
+every abstraction in networking is ultimately standing on top of this.</p>
+
+<p>Your laptop is connected to your Cox router by ONE of two physical
+media: a copper Ethernet cable carrying electrical voltage pulses, or a
+Wi-Fi radio carrying electromagnetic waves in the 2.4GHz or 5GHz bands.
+Either way, at the very bottom of everything, what's actually happening
+is a stream of physical signal transitions being interpreted as 1s and
+0s — a voltage above some threshold means "1," below means "0" (massively
+simplified, but conceptually correct). Nothing about "IP address" or
+"packet" exists at this level. This is called the PHYSICAL layer.</p>
+
+<p>Those raw 1s and 0s are grouped into chunks called FRAMES by the
+network card's own hardware/firmware — this grouping-into-chunks step is
+the DATA LINK layer, and it's where MAC addresses live (Section 3 covers
+this fully). A frame is genuinely just "some number of bytes, with a
+defined start and end, plus a couple of address fields at the front."</p>
+
+<p>Inside each frame's payload sits an IP PACKET — a structured chunk of
+bytes with its own header containing, among other things, a source IP
+address and destination IP address (Section 2). This is the NETWORK
+layer.</p>
+
+<p>Inside the IP packet's payload sits a TCP or UDP SEGMENT (Module 07's
+territory) with port numbers. And inside THAT sits whatever your actual
+application — a web browser, this course's own Flask dashboard — was
+trying to send: an HTTP request, a DNS query, whatever.</p>
+
+<div class="brain">
+<strong>Brain power:</strong> why does this "layers nested inside layers"
+structure exist at all, instead of one flat format? Because each layer
+solves a DIFFERENT problem, and needs to be replaceable independently.
+The physical medium (Ethernet cable vs. Wi-Fi vs. fiber) can change
+without IP addressing needing to change. The IP addressing scheme can
+stay identical whether the underlying link is Ethernet or Wi-Fi. This
+separation is precisely what lets your laptop keep the SAME IP address
+conversation with a web server whether you're on Ethernet or you just
+switched to Wi-Fi — the network layer doesn't care what physical medium
+carried its packet. Module 02 formalizes this as the OSI/TCP-IP model;
+right now, just internalize that "layers" is a genuinely useful
+engineering idea, not academic decoration.
+</div>
+
+<p>Everything <code>netinfo_server.py</code> and <code>netinfo.js</code>
+report — interfaces, gateway, DNS, ARP — is your machine's own recorded
+STATE about layers 2 and 3 (data link and network) specifically. None of
+it involves sending traffic; it's all information your OS already
+collected and is keeping in memory or in a config file.</p>
+
+<h2 id="sec2">2. IP Addresses, From Absolute Zero</h2>
+
+<h3>2.1 — What an IP address actually is, numerically</h3>
+<p>An IPv4 address is a single 32-bit number. That's it — one number,
+between 0 and 4,294,967,295 (2³² − 1). We never WRITE it as one giant
+number because humans are bad at reading 10-digit numbers reliably; instead
+we write it in "dotted decimal" notation: the 32 bits are split into four
+groups of 8 bits each (each group called an OCTET, because 8 bits), and
+each 8-bit group is written as its decimal value (0–255, since 8 bits can
+represent exactly 256 distinct values, 0 through 255).</p>
+
+<p>So when you see <code>192.168.1.69</code>, what's ACTUALLY there,
+underneath the human-friendly notation, is:</p>
+<pre>192 = 11000000
+168 = 10101000
+  1 = 00000001
+ 69 = 01000101
+
+Full 32-bit number: 11000000.10101000.00000001.01000101</pre>
+<p>Concatenated with no dots, that's a single 32-bit binary number. The
+dots are ONLY for human readability — no router, switch, or piece of
+network hardware ever sees "dots"; it sees 32 bits, grouped as 4 bytes,
+transmitted as part of the IP header.</p>
+
+<div class="why">
+<strong>Why base this on 8-bit groups (octets) specifically, rather than,
+say, 4-bit or 16-bit groups?</strong> An 8-bit group maps exactly onto
+one BYTE — the fundamental unit computer memory and network hardware are
+already built around. Choosing octets meant IP addressing could be
+implemented directly on top of existing byte-oriented hardware and
+software with zero special-casing, rather than requiring hardware to
+work with awkward, non-byte-aligned chunks.
+</div>
+
+<h3>2.2 — Private vs. public IP address ranges</h3>
+<p>Not every possible 32-bit value is usable on the public internet.
+Three specific ranges (defined in RFC 1918, a real, citable standards
+document) are reserved for PRIVATE use — meaning any organization, anywhere,
+including your own home network, can use addresses from these ranges
+internally, and they are guaranteed to never collide with a real, public,
+internet-routable address, because internet routers are configured to
+NEVER forward traffic to or from these ranges across the public internet.</p>
+
+<table>
+<tr><th>Private range</th><th>Also written as</th><th>Typical use</th></tr>
+<tr><td>10.0.0.0 – 10.255.255.255</td><td>10.0.0.0/8</td><td>Large organizations, cloud VPCs (Module 17)</td></tr>
+<tr><td>172.16.0.0 – 172.31.255.255</td><td>172.16.0.0/12</td><td>Medium-sized networks, some Docker default networks</td></tr>
+<tr><td>192.168.0.0 – 192.168.255.255</td><td>192.168.0.0/16</td><td>Home routers — <strong>this is almost certainly what your own Cox router hands out</strong></td></tr>
+</table>
+
+<div class="scenario">
+<h4>Scenario: why does YOUR laptop have an address like 192.168.1.69, and not some random public-looking address?</h4>
+<p>Your Cox modem/router has exactly ONE real, public, internet-routable
+IP address (assigned by Cox, changes occasionally unless you pay for a
+static IP). Every device INSIDE your home — your laptop, phone, smart TV
+— gets a PRIVATE address from your router's own built-in DHCP server
+(Module 08 covers DHCP's actual mechanism), drawn from the
+<code>192.168.x.x</code> range. When your laptop talks to the outside
+internet, your router performs NAT — Network Address Translation
+(Module 10's full territory) — rewriting your private source address to
+its own single public address before forwarding your traffic onward, and
+rewriting it back on the way home. This is exactly why
+<code>netinfo_server.py</code>'s dashboard shows you a private
+<code>192.168.x.x</code>-style address, not whatever public IP address a
+site like "whatismyip.com" would report if you visited it — those are
+two DIFFERENT addresses, for two different reasons, and conflating them
+is one of the most common beginner confusions in networking.</p>
+</div>
+
+<h3>2.3 — Loopback: 127.0.0.1</h3>
+<p><code>127.0.0.1</code> (and, in fact, the ENTIRE <code>127.0.0.0/8</code>
+range — every address from <code>127.0.0.0</code> to
+<code>127.255.255.255</code>, though <code>127.0.0.1</code> is the one
+everyone actually uses) is reserved as the LOOPBACK address — it always
+refers to "this same machine," and traffic sent to it never leaves your
+computer's own network stack at all; it's short-circuited internally by
+your OS's kernel, without ever touching a network card, cable, or radio.</p>
+
+<div class="why">
+<strong>Why does this matter for THIS course specifically?</strong> Every
+single lab server this course builds — <code>netinfo_server.py</code> on
+port 5000, the Node variant on port 5050, and every server in every later
+module — binds to <code>127.0.0.1</code> specifically, not
+<code>0.0.0.0</code> (which would mean "accept connections from ANY
+network interface, including ones reachable from other devices on your
+LAN or, worse, the internet"). Binding to loopback only is a deliberate,
+load-bearing safety decision (see <code>SAFETY.md</code>): it guarantees
+these lab servers are physically unreachable from any other device,
+including other computers on your own home network, because loopback
+traffic never leaves your machine's own kernel.
+</div>
+
+<div class="pitfall">
+<strong>Common beginner mixup:</strong> confusing "my machine's real LAN
+IP" (like <code>192.168.1.69</code>, reachable from other devices on your
+home network) with "loopback" (<code>127.0.0.1</code>, reachable ONLY
+from the same machine). If you ever tried to open
+<code>http://127.0.0.1:5000</code> from your PHONE (a different device)
+expecting to see this course's dashboard, it would fail — not because
+anything is broken, but because <code>127.0.0.1</code> means something
+different on every machine that uses it: "yourself." Your phone's own
+<code>127.0.0.1</code> refers to your PHONE, not your laptop.
+</div>
+
+<h2 id="sec3">3. MAC Addresses, From Absolute Zero</h2>
+
+<p>Every network interface — your laptop's Wi-Fi card, its Ethernet
+port, your router's ports — has a MAC (Media Access Control) address
+burned in at the factory. Unlike an IP address (which is ASSIGNED,
+typically by DHCP, and can change), a MAC address is meant to be a
+permanent, globally unique hardware identifier — though in practice,
+modern OSes can and do "randomize" the MAC address presented over Wi-Fi
+for privacy reasons, a nuance worth knowing about but not needed to
+proceed here.</p>
+
+<h3>3.1 — MAC address structure</h3>
+<p>A MAC address is 48 bits, written as six pairs of hexadecimal digits
+separated by colons or hyphens: <code>AA:BB:CC:DD:EE:FF</code>. The FIRST
+three pairs (<code>AA:BB:CC</code>) are the OUI — Organizationally Unique
+Identifier — assigned to the specific manufacturer (Intel, Apple, Realtek,
+etc.) by the IEEE, the standards body that governs Ethernet. The LAST
+three pairs are assigned by that manufacturer themselves, uniquely per
+device they produce.</p>
+
+<div class="brain">
+<strong>Brain power:</strong> if you looked up a device's OUI (the first
+three MAC octets) against a public OUI database, what could you learn
+about a device WITHOUT ever asking it directly? You could identify the
+manufacturer — sometimes even the rough product category (a certain OUI
+range is specific to Raspberry Pi Foundation devices, for instance).
+This is a real, legitimate reconnaissance technique used in network
+inventory tools, and also, less benignly, in some attacker
+reconnaissance — one more reason a real ARP table (like the one this
+module's dashboard shows you) carries more information than it might
+first appear to.
+</div>
+
+<h3>3.2 — Why do we need BOTH a MAC address and an IP address?</h3>
+<p>This is one of the single most important conceptual questions in
+early networking, and it trips up almost everyone at first. Here's the
+precise answer:</p>
+<ul>
+<li><strong>MAC addresses operate at Layer 2 (data link)</strong> — they
+identify a device WITHIN a single physical/local network segment (your
+home LAN, a single Wi-Fi network, a single Ethernet switch's set of
+ports). A switch (Module 03) forwards frames based ENTIRELY on MAC
+addresses — it has no concept of IP addresses at all.</li>
+<li><strong>IP addresses operate at Layer 3 (network)</strong> — they
+identify a device across an ENTIRE internetwork (literally, "inter" +
+"network" — many networks stitched together, which is what "the
+internet" literally means). Routers forward packets between DIFFERENT
+networks based on IP addresses; they generally don't care about MAC
+addresses beyond the single hop directly in front of them.</li>
+</ul>
+
+<div class="scenario">
+<h4>Scenario: your laptop sends a request to google.com. Does the packet carry Google's MAC address the whole way?</h4>
+<p>No — and understanding exactly why is the single clearest way to
+internalize the MAC-vs-IP distinction. The IP packet's DESTINATION IP
+address stays constant the entire journey (Google's real public IP,
+however many routers it passes through). But the MAC address in the
+surrounding Ethernet FRAME changes at EVERY hop: from your laptop to
+your home router, the frame's destination MAC is your router's MAC
+address. Your router then strips that frame, looks at the IP packet
+inside, decides "this needs to go to Cox's next router," and wraps it in
+a BRAND NEW frame addressed (at Layer 2) to Cox's router's MAC address —
+even though the IP packet's destination IP (Google's) never changed. This
+repeats at every hop: same IP packet, riding inside a series of
+completely different, re-addressed Ethernet frames, one per hop, all the
+way to Google's own network. This exact mechanic — same IP header,
+constantly re-wrapped Ethernet framing — is precisely what Module 03
+demonstrates with a hands-on switch simulation, and precisely why
+<code>tracert</code>/<code>traceroute</code> (Section 8 below) can
+discover each intermediate hop's IDENTITY even though you, the sender,
+never directly addressed anything to them at Layer 3.</p>
+</div>
+
+<h2 id="sec4">4. Subnet Masks and What "/24" Actually Means</h2>
+
+<p>A subnet mask answers exactly one question: "given a 32-bit IP
+address, which bits identify the NETWORK this device is on, and which
+bits identify THIS SPECIFIC DEVICE within that network?" This is the
+single most important practical skill in early networking, and Module 04
+builds an entire subnet calculator around it — but you need the concept
+solidly here, because "default gateway" (Section 5) only makes sense once
+you understand this.</p>
+
+<h3>4.1 — The mechanism: bitwise AND</h3>
+<p>A subnet mask is ALSO a 32-bit number, conventionally written in the
+same dotted-decimal form as an IP address, but its job is completely
+different: every bit set to 1 in the mask means "this bit position is
+part of the NETWORK portion of the address"; every bit set to 0 means
+"this bit position is part of the HOST portion" (the specific device).</p>
+
+<div class="scenario">
+<h4>Worked scenario 1 — a typical home /24 network</h4>
+<pre>IP address:   192.168.1.69   = 11000000.10101000.00000001.01000101
+Subnet mask:  255.255.255.0  = 11111111.11111111.11111111.00000000
+                                (24 ones, then 8 zeros -- hence "/24")
+
+Bitwise AND (IP & mask) gives the NETWORK address:
+  11000000.10101000.00000001.01000101
+& 11111111.11111111.11111111.00000000
+------------------------------------
+  11000000.10101000.00000001.00000000  = 192.168.1.0
+
+Network address:  192.168.1.0
+Host portion:     the last 8 bits -- this device is host ".69"
+                   on the 192.168.1.0 network
+Usable host range: 192.168.1.1 through 192.168.1.254
+                   (.0 is the network address itself, .255 is the
+                    broadcast address -- neither is assignable to a device)</pre>
+<p>Any other device whose AND result also equals <code>192.168.1.0</code>
+is on the SAME network as your laptop — meaning it can be reached
+directly, with no router needed (Section 5 explains exactly why this
+distinction is the crux of the default gateway concept). Any device whose
+AND result is DIFFERENT is on a different network, and reaching it
+requires going through a router.</p>
+</div>
+
+<div class="scenario">
+<h4>Worked scenario 2 — a smaller /26 network (Module 09's own segmentation numbers)</h4>
+<pre>IP address:   192.168.1.69    = 11000000.10101000.00000001.01000101
+Subnet mask:  255.255.255.192 = 11111111.11111111.11111111.11000000
+                                 (26 ones, then 6 zeros -- "/26")
+
+  11000000.10101000.00000001.01000101
+& 11111111.11111111.11111111.11000000
+------------------------------------
+  11000000.10101000.00000001.01000000  = 192.168.1.64
+
+Network address:  192.168.1.64
+Usable host range: 192.168.1.65 through 192.168.1.126
+                    (.64 is network, .127 is broadcast --
+                     only 6 host bits means 2^6 = 64 total addresses,
+                     minus network and broadcast = 62 usable)</pre>
+<p>Notice: the SAME IP address (<code>192.168.1.69</code>) belongs to a
+COMPLETELY different-sized network depending on the mask. The IP address
+alone tells you nothing about network boundaries — you always need
+BOTH the address and the mask together. This is precisely why every
+tool in this course (and every real OS) always reports them as a pair,
+never the address alone.</p>
+</div>
+
+<div class="scenario">
+<h4>Worked scenario 3 — a large /16 (why "192.168.0.0/16" as a whole private range makes sense)</h4>
+<pre>Mask 255.255.0.0 = 11111111.11111111.00000000.00000000  ("/16")
+
+Only the FIRST 16 bits (192.168) identify the network; the remaining
+16 bits (65,536 possible values) are all host addresses. This is why
+RFC 1918 describes the ENTIRE 192.168.0.0/16 range as reserved for
+private use -- it's really 256 separate possible /24 networks
+(192.168.0.0/24 through 192.168.255.0/24) bundled into one reserved
+block, giving every home router manufacturer plenty of room to each
+pick their own default /24 (many pick 192.168.1.0/24 or 192.168.0.0/24
+specifically) without colliding.</pre>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain, mechanically, why
+a subnet mask is necessary at all — why can't a device just look at an
+IP address alone and know whether another device is local or remote?"
+Answer: an IP address alone is just 32 bits with no inherent structure
+telling you where the network/host boundary falls — <code>192.168.1.69</code>
+could be a /24, a /26, a /16, or any other prefix length, each implying
+a DIFFERENT network boundary and therefore a different answer to "is
+this other address local to me." The mask is what makes that boundary
+explicit and computable via the AND operation — without it, "is this
+device on my local network" would be genuinely undefined.
+</div>
+
+<h2 id="sec5">5. The Default Gateway — A Packet's Full Journey, Two Ways</h2>
+
+<p>Now that you understand network/host boundaries (Section 4), the
+default gateway concept becomes almost mechanical. Here is the actual
+DECISION your operating system makes, every single time it sends a
+packet, told as two full narrative scenarios.</p>
+
+<div class="scenario">
+<h4>Scenario A — same-subnet communication (gateway NOT used)</h4>
+<p>Say your laptop is <code>192.168.1.69/24</code>, and you want to print
+to a network printer at <code>192.168.1.80</code>.</p>
+<ol>
+<li>Your OS computes: is <code>192.168.1.80</code> on the SAME network as
+me? It applies YOUR OWN subnet mask (<code>/24</code>) to the
+DESTINATION address: <code>192.168.1.80 AND 255.255.255.0 =
+192.168.1.0</code>. That matches your own network address
+(<code>192.168.1.0</code>, computed in Section 4.1). Same network.</li>
+<li>Because it's the same network, your OS knows it can reach the
+printer DIRECTLY — no router needed. But it still needs the printer's
+MAC address to build the Ethernet frame (Section 3.2's lesson: framing
+always needs a MAC address for the immediate next hop). If the printer
+isn't already in your ARP cache, your OS triggers an ARP request first
+(Section 7 walks through this in full).</li>
+<li>Your OS sends the frame DIRECTLY to the printer's MAC address. The
+default gateway is never consulted, never involved, and doesn't even
+need to be reachable for this to work.</li>
+</ol>
+</div>
+
+<div class="scenario">
+<h4>Scenario B — cross-subnet communication (gateway IS used) — e.g., reaching 8.8.8.8</h4>
+<p>Now say you want to reach <code>8.8.8.8</code> (Google's public DNS
+server) — clearly not on your home /24.</p>
+<ol>
+<li>Your OS computes: <code>8.8.8.8 AND 255.255.255.0</code> — this does
+NOT equal your own network address (<code>192.168.1.0</code>). Different
+network.</li>
+<li>Your OS consults its ROUTING TABLE (a real, inspectable structure —
+Module 05 covers reading and building these in full) and finds a
+"default route" entry, which essentially says: "for ANY destination not
+covered by a more specific route, send it to THIS address" — your
+default gateway, e.g. <code>192.168.1.1</code> (your router).</li>
+<li>Critically: the IP PACKET's destination address is still
+<code>8.8.8.8</code> — that never changes. But the ETHERNET FRAME
+carrying it is addressed, at Layer 2, to your GATEWAY's MAC address, not
+Google's (your laptop has no way to know Google's MAC address anyway —
+MAC addresses are only meaningful within a single physical segment,
+per Section 3.2). This requires your gateway's MAC address to be in
+your ARP cache (or triggers an ARP request for it if not).</li>
+<li>Your router receives the frame, strips it, looks at the IP packet's
+destination (<code>8.8.8.8</code>), determines this is NOT on any network
+it's directly attached to either, and forwards it toward ITS OWN default
+gateway (Cox's own upstream router) — wrapping the same unchanged IP
+packet in a brand new frame addressed to Cox's router's MAC address.
+This repeats, hop by hop (exactly what <code>tracert</code> reveals),
+until the packet reaches a router that IS directly attached to
+Google's network, which delivers it via a final ARP-resolved frame.</li>
+</ol>
+</div>
+
+<div class="why">
+<strong>The single sentence that ties Sections 4 and 5 together:</strong>
+your OS's ENTIRE routing decision — "do I need a gateway at all?" — comes
+down to one bitwise AND operation, comparing the destination address
+against your own subnet mask. Everything else (ARP resolution, frame
+addressing, hop-by-hop forwarding) follows mechanically from that one
+comparison's result.
+</div>
+
+<h2 id="sec6">6. DNS Servers — What "Resolving A Name" Actually Means</h2>
+
+<p>Your dashboard's "DNS Servers" field lists the IP addresses your OS
+will send NAME LOOKUP requests to — but what is a name lookup, precisely?</p>
+
+<h3>6.1 — The problem DNS solves</h3>
+<p>Humans type <code>google.com</code>. Computers need
+<code>142.250.x.x</code> (an actual IP address) to open a TCP connection
+— IP routing (Section 5) has no concept of domain names at all, only
+32-bit addresses. DNS (Domain Name System) is the mechanism that
+translates one into the other. Module 08 builds a real, working DNS
+server from scratch and covers the wire protocol in full depth; for now,
+understand the ROLE these "DNS servers" in your dashboard play.</p>
+
+<h3>6.2 — Recursive resolution, narrated</h3>
+<div class="scenario">
+<h4>Scenario: you type google.com into your browser for the very first time on a freshly rebooted machine</h4>
+<ol>
+<li>Your OS checks its own local DNS cache — empty (fresh boot). No
+answer available locally.</li>
+<li>Your OS sends a DNS query to the FIRST address in your "DNS Servers"
+list — for a Cox customer with default settings, this is typically one
+of Cox's own resolver addresses (commonly in the <code>68.105.x.x</code>
+range, as <code>tutorial.html</code> notes); if you've manually
+configured public DNS, it might be <code>8.8.8.8</code> (Google) or
+<code>1.1.1.1</code> (Cloudflare) instead.</li>
+<li>That server is a RECURSIVE resolver — its job is to do the full
+multi-step lookup ON YOUR BEHALF and hand you back a final answer,
+rather than making you do each step yourself. It queries a root DNS
+server, which points it to the <code>.com</code> TLD servers, which
+point it to Google's own authoritative name servers, which finally
+answer with the real IP address. (Module 08's deep theory walks this
+FULL chain in complete mechanical detail — this is the summary version.)</li>
+<li>The recursive resolver returns the final IP address to your OS,
+which caches it locally for some period (the record's TTL — time to
+live) and hands it to your browser, which can NOW open a TCP connection
+to the actual IP address.</li>
+</ol>
+</div>
+
+<div class="scenario">
+<h4>Scenario: you visit google.com a SECOND time, 30 seconds later</h4>
+<p>Your OS's local cache still has the answer (assuming the TTL hasn't
+expired) — no DNS query is sent at all this time. This is why the FIRST
+visit to a new site often feels marginally slower than subsequent
+visits — the DNS lookup itself, plus everything downstream of it,
+happens only once per cache lifetime, not on every single page load.</p>
+</div>
+
+<div class="why">
+<strong>Why does it matter WHICH DNS server you use — Cox's own vs. a
+public one like 8.8.8.8?</strong> Functionally, for basic resolution,
+both give correct answers most of the time. Real differences: (1) SPEED
+— your ISP's resolver is often physically/network-topologically closer,
+meaning lower latency per lookup; (2) PRIVACY — your DNS resolver sees
+EVERY domain name you look up, meaning it (in principle) knows every
+site you've visited, so which entity you trust with that visibility is
+a real choice; (3) FILTERING/CENSORSHIP — some ISP resolvers apply
+content filtering or redirect NXDOMAIN (not-found) responses to an ad
+page, behavior a public resolver like 8.8.8.8 typically doesn't do. None
+of this changes the MECHANISM — it changes which entity you're trusting
+to perform it.
+</div>
+
+<h2 id="sec7">7. The ARP Cache — A Full Narrative Walkthrough</h2>
+
+<p>Module 03 covers ARP's wire format and full mechanism in complete
+depth. Here, walk through the actual STORY of what happens, end to end,
+matching exactly what Step 4 of <code>tutorial.html</code> has you do —
+ping an unfamiliar device and watch it appear in your ARP table.</p>
+
+<div class="scenario">
+<h4>Full scenario: pinging 192.168.1.80 (a device you've never talked to) for the first time</h4>
+<ol>
+<li><strong>Your OS's decision (Section 5's logic):</strong>
+<code>192.168.1.80</code> is on your own subnet (same AND-mask result as
+your own address) — no gateway needed, direct delivery.</li>
+<li><strong>The MAC problem:</strong> to build the Ethernet frame, your
+OS needs <code>192.168.1.80</code>'s MAC address. It checks its ARP
+cache — empty for this address (you've never talked to this device).</li>
+<li><strong>The ARP request:</strong> your OS BROADCASTS a frame to the
+special all-devices address <code>FF:FF:FF:FF:FF:FF</code> — every
+device on your local network segment receives and processes this frame
+(broadcast means "everyone listens," unlike a normal unicast frame that
+only its specific addressee processes). The frame's PAYLOAD is an ARP
+request: "Who has 192.168.1.80? Tell 192.168.1.69" (your own address).</li>
+<li><strong>Every other device on the LAN receives this broadcast</strong>
+and checks: "is that IP address mine?" All but one say no and silently
+discard it. The ONE device that actually has
+<code>192.168.1.80</code> recognizes itself.</li>
+<li><strong>The ARP reply:</strong> that device sends back a UNICAST
+frame (addressed directly to YOUR MAC address, learned from the request
+frame's own source field) containing: "192.168.1.80 is at
+AA:BB:CC:11:22:33" (its real MAC address).</li>
+<li><strong>Your OS caches this mapping</strong> — this is the entry
+that now appears in <code>arp -a</code>'s output, and in this module's
+dashboard's ARP table. The cache entry has a limited lifetime (commonly
+a few minutes, OS-dependent) — after it expires unused, the whole
+process repeats on your NEXT attempt to reach that device.</li>
+<li><strong>Only NOW does the actual ICMP Echo Request (the "ping"
+itself) get sent</strong> — wrapped in an Ethernet frame addressed
+DIRECTLY to <code>AA:BB:CC:11:22:33</code>, the MAC address ARP just
+resolved.</li>
+</ol>
+</div>
+
+<div class="brain">
+<strong>Brain power:</strong> why is an ARP request BROADCAST rather than
+sent directly to the target? Because at the moment you send it, you
+don't yet know the target's MAC address — and MAC-address-based framing
+(Section 3.2) requires knowing SOME address to put in the frame's
+destination field. Broadcast is the "ask everyone, since I don't know
+who specifically to ask" mechanism — the fundamental bootstrapping
+trick that makes MAC-address discovery possible at all without any
+prior configuration.
+</div>
+
+<div class="pitfall">
+<strong>Why your ARP table looked "sparse" before Step 4:</strong> your
+OS only remembers devices it's RECENTLY communicated with — cache
+entries expire specifically so the table doesn't grow unboundedly and
+so it self-corrects if a device's MAC address changes (a new device
+replacing an old one at the same IP, for instance). A freshly-booted or
+lightly-used machine's ARP table will be nearly empty simply because it
+hasn't needed to talk to many local devices recently — this is expected
+behavior, not a sign anything is broken.
+</div>
+
+<h2 id="sec8">8. Every Command, Re-Explained With Many More Scenarios</h2>
+
+<h3>8.1 — <code>python -m venv venv</code> and activation, expanded</h3>
+
+<div class="scenario">
+<h4>Scenario: you have both Python 3.9 and Python 3.12 installed (common on a machine that's accumulated tools over years)</h4>
+<p>Running plain <code>python -m venv venv</code> uses whichever
+<code>python</code> your PATH currently resolves to FIRST — which might
+not be the version you expect. To force a specific version, use the
+version-specific launcher explicitly: <code>python3.12 -m venv venv</code>
+(Mac/Linux) or <code>py -3.12 -m venv venv</code> (Windows, using the
+`py` launcher that ships with official Python installers specifically to
+solve this multi-version problem). Always verify with
+<code>python --version</code> AFTER activation — never assume.</p>
+</div>
+
+<div class="pitfall">
+<strong>Common mistake: activating a venv in one terminal, then opening a
+BRAND NEW terminal window and being confused why <code>python</code>
+"reverted."</strong> Activation is a PER-TERMINAL-SESSION change (it
+modifies that shell process's own PATH variable in memory) — it does
+NOT persist across terminal windows, reboots, or even simply closing and
+reopening the same terminal application. Every new terminal session
+needs its own <code>activate</code> call. This is not a bug; it's the
+direct, correct consequence of activation being implemented as a
+temporary PATH modification rather than a permanent system change (which
+is precisely the point — a permanent global change would defeat the
+entire purpose of isolating each project's dependencies).
+</div>
+
+<h3>8.2 — <code>pip install -r requirements.txt</code>, expanded</h3>
+
+<div class="scenario">
+<h4>Scenario: pip install fails with a permissions error</h4>
+<p>This almost always means your venv wasn't actually activated when you
+ran the command (so pip is trying to write to your SYSTEM Python's
+package folder, which typically requires admin/root privileges) — go
+back and re-run the activation command, verify with
+<code>where python</code>/<code>which python</code> that it now points
+inside your <code>venv</code> folder, THEN retry the install. Do not
+"fix" this by running <code>pip install</code> with <code>sudo</code> or
+as Administrator — that installs the package globally, defeating the
+entire purpose of the venv and potentially creating exactly the
+cross-project version conflicts venvs exist to prevent.</p>
+</div>
+
+<h3>8.3 — <code>ping</code>, expanded with failure scenarios</h3>
+
+<table>
+<tr><th>What you see</th><th>What it actually means</th></tr>
+<tr><td><code>Reply from 192.168.1.1: bytes=32 time=1ms TTL=64</code></td><td>Success. TTL=64 is Linux/macOS's typical starting TTL (Windows typically starts at 128) — the number you SEE is the STARTING value minus however many hops it crossed; since your gateway is exactly one hop away, seeing TTL=63 or so on some systems (or TTL=64 if the gateway itself replies without further decrementing for a locally-generated reply) is expected.</td></tr>
+<tr><td><code>Request timed out.</code></td><td>No reply arrived within the timeout window. Could mean: the target is genuinely unreachable/offline, a firewall along the path is silently dropping ICMP (a very common, deliberate security practice — Module 10 covers exactly why), or transient network congestion. A SINGLE timeout among several successful replies is usually just one dropped packet, not a real problem — normal networks lose the occasional packet.</td></tr>
+<tr><td><code>Destination host unreachable.</code></td><td>Different from a timeout — this is an ACTIVE error message, typically generated by YOUR OWN machine or your gateway, saying "I have no route to reach that address at all" (as opposed to "I sent it, but nothing answered"). This usually means a genuinely wrong IP address, or a device that's fully offline at the network layer.</td></tr>
+<tr><td>Ping succeeds to your gateway, but NOT to 8.8.8.8</td><td>Your LOCAL network (laptop-to-router) is healthy; the problem lies somewhere further out — could be your router's own internet connection being down, a Cox-side outage, or (if you're on a VPN) a routing misconfiguration in the VPN tunnel. This is a genuinely useful diagnostic STEP, not just a random test — testing progressively farther destinations (gateway, then a known-reliable public IP) isolates WHERE in the path a problem lives.</td></tr>
+</table>
+
+<h3>8.4 — <code>tracert</code>/<code>traceroute</code>, expanded</h3>
+
+<div class="scenario">
+<h4>Scenario: several hops in a row show asterisks (<code>* * *</code>) instead of a hostname/IP and timing</h4>
+<p>This does NOT necessarily mean the path is broken. It very commonly
+means that specific router is CONFIGURED to not respond to the "TTL
+Exceeded" ICMP message traceroute depends on (Section on tracert in
+<code>tutorial2.html</code> explains the underlying mechanism) — many ISP
+and enterprise routers deliberately rate-limit or suppress these
+responses as a security/performance practice, while still correctly
+FORWARDING your actual traffic. If hops AFTER the asterisks resume
+showing real responses, and the traceroute eventually reaches its
+destination successfully, the path is fine — those particular hops just
+chose not to identify themselves. This trips up nearly everyone the
+first time they see it.</p>
+</div>
+
+<h3>8.5 — <code>arp -a</code>, expanded</h3>
+
+<div class="scenario">
+<h4>Scenario: your ARP table shows an entry marked "invalid" or "incomplete" (Linux) instead of a real MAC address</h4>
+<p>This means your OS attempted an ARP request for that IP but never
+received a reply — often because the device at that IP recently went
+offline, changed its IP via a new DHCP lease, or was never actually
+present (a stale entry from your own address-guessing, or a leftover
+cached IP from a device that's since disconnected). This is a normal,
+expected transient state, not an error condition.</p>
+</div>
+
+<h2 id="sec9">9. Full Code Walkthrough — netinfo_server.py, Line By Line</h2>
+
+<p>This section reads through the actual, real, tested source code in
+this module's own <code>netinfo_server.py</code>, function by function,
+explaining every non-obvious line.</p>
+
+<h3>9.1 — Imports and setup</h3>
+<pre>import platform
+import re
+import socket
+import subprocess
+from pathlib import Path
+
+import psutil
+from flask import Flask, jsonify, send_from_directory</pre>
+<p><code>platform</code> is Python's standard-library module for
+detecting which OS you're running on — used here as
+<code>platform.system()</code>, which returns exactly the string
+<code>"Windows"</code>, <code>"Linux"</code>, or <code>"Darwin"</code>
+(macOS's kernel name, a historical artifact of macOS being built on the
+Darwin/BSD kernel). <code>re</code> is Python's regular-expression
+module, used throughout this file to extract specific values out of
+command-line tools' free-form text output. <code>subprocess</code> lets
+Python launch and capture the output of ANOTHER program (like
+<code>ipconfig</code>) as if you'd typed it yourself. <code>psutil</code>
+("process and system utilities") is a THIRD-PARTY package (hence needing
+<code>pip install</code>) that provides a cross-platform, structured API
+for exactly the kind of OS-level introspection this module needs.</p>
+
+<h3>9.2 — The address family mapping</h3>
+<pre>_FAMILY_NAMES = {
+    socket.AF_INET: "IPv4",
+    socket.AF_INET6: "IPv6",
+    getattr(psutil, "AF_LINK", -1): "MAC",
+}</pre>
+<p><code>psutil</code> reports each address's "family" as a raw
+<code>socket.AddressFamily</code> ENUM value — internally just an
+integer. On some platforms, printing this enum directly gives a readable
+name like <code>AddressFamily.AF_INET</code>; on Windows specifically, it
+can print as a bare, meaningless integer instead. This dictionary is a
+manual translation table built specifically to guarantee readable output
+regardless of platform quirks — <code>AF_INET</code> is IPv4,
+<code>AF_INET6</code> is IPv6, and <code>psutil.AF_LINK</code> (a
+psutil-specific constant, not a standard socket one, hence the safe
+<code>getattr</code> lookup with a <code>-1</code> fallback in case it
+doesn't exist on some platform) represents a MAC/hardware address entry.</p>
+
+<div class="why">
+<strong>Why <code>getattr(psutil, "AF_LINK", -1)</code> instead of just
+<code>psutil.AF_LINK</code> directly?</strong> If <code>psutil.AF_LINK</code>
+didn't exist on some platform/version, a direct reference would raise an
+<code>AttributeError</code> and crash the ENTIRE module at import time,
+before the server even starts. <code>getattr</code> with a default value
+means "try to get this attribute; if it doesn't exist, use <code>-1</code>
+instead (a value that will simply never match any real family and fall
+through to the dictionary's default case) rather than crashing." This is
+a defensive-programming pattern worth recognizing — it appears constantly
+in real, portable code that needs to run correctly across environments
+that might not all have identical capabilities.
+</div>
+
+<h3>9.3 — The <code>_run()</code> helper</h3>
+<pre>def _run(cmd):
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, timeout=5, shell=False
+        )
+        return result.stdout.decode(errors="replace")
+    except Exception as exc:
+        return f"&lt;command failed: {exc}&gt;"</pre>
+<p><code>subprocess.run(cmd, ...)</code> launches <code>cmd</code> (a
+LIST of strings, like <code>["ipconfig", "/all"]</code> — never a single
+string) as a genuinely separate child process, waits for it to finish,
+and captures its output. <code>capture_output=True</code> redirects that
+child process's stdout/stderr into Python-accessible buffers instead of
+letting them print directly to your terminal. <code>timeout=5</code>
+means "if this command hasn't finished within 5 seconds, give up and
+raise an exception" — a real safeguard against a hung or misbehaving
+external command freezing this whole server forever.
+<code>shell=False</code> (the default, but stated explicitly here for
+clarity) means the command list is executed DIRECTLY, not passed through
+a shell interpreter first — this is a genuine, important security
+practice: passing <code>shell=True</code> with any string built from
+untrusted input would open a command-injection vulnerability (the exact
+OWASP-category bug this course's own SAFETY.md and later modules warn
+about repeatedly).</p>
+<p><code>.decode(errors="replace")</code> converts the raw BYTES
+<code>subprocess</code> returns into a Python string. <code>errors="replace"</code>
+specifically means "if any byte sequence isn't valid text in the
+expected encoding, substitute a placeholder character instead of
+crashing" — Windows console output can occasionally contain
+encoding quirks depending on system locale, and this guarantees the
+server never crashes just because of an unexpected byte in
+<code>ipconfig</code>'s output.</p>
+
+<h3>9.4 — <code>get_interfaces()</code></h3>
+<pre>def get_interfaces():
+    addrs = psutil.net_if_addrs()
+    stats = psutil.net_if_stats()
+    interfaces = []
+    for name, addr_list in addrs.items():
+        stat = stats.get(name)
+        interfaces.append({
+            "name": name,
+            "is_up": stat.isup if stat else None,
+            "speed_mbps": stat.speed if stat else None,
+            "mtu": stat.mtu if stat else None,
+            "addresses": [
+                {"family": _family_name(a.family), "address": a.address, "netmask": a.netmask}
+                for a in addr_list
+            ],
+        })
+    return interfaces</pre>
+<p><code>psutil.net_if_addrs()</code> returns a dictionary keyed by
+interface name (like <code>"Ethernet"</code> or <code>"Wi-Fi"</code> on
+Windows, or <code>"eth0"</code>/<code>"wlan0"</code> on Linux), with each
+value being a LIST of address entries — a single interface commonly has
+BOTH an IPv4 address AND an IPv6 address AND a MAC address, each as a
+separate entry in this list, which is exactly why this code loops over
+<code>addr_list</code> to build the <code>"addresses"</code> array rather
+than assuming one address per interface. <code>psutil.net_if_stats()</code>
+returns a SEPARATE dictionary (also keyed by interface name) with
+operational statistics — up/down state, link speed, MTU — that
+<code>net_if_addrs()</code> does not include, which is why this function
+calls BOTH psutil functions and joins them together by interface name via
+the <code>stats.get(name)</code> lookup. The <code>if stat else None</code>
+pattern guards against an interface appearing in the address dictionary
+but, for some reason, having no corresponding stats entry — a real
+edge case on some virtual/tunnel adapters.</p>
+
+<h3>9.5 — <code>get_default_gateway()</code> and <code>get_dns_servers()</code></h3>
+<p>Both functions follow the identical structural pattern: branch on
+<code>SYSTEM</code> (the platform detected at import time), run the
+appropriate native command for that platform, and extract the needed
+value with a regular expression or line-by-line text search.</p>
+<p>On Windows, both functions call <code>_run(["ipconfig", "/all"])</code>
+— note this means <code>ipconfig /all</code> is actually invoked TWICE
+per <code>/api/netinfo</code> request (once inside each function) rather
+than once, with the shared output reused. This is a genuine, real,
+observable inefficiency in this module's own code — not a bug (the
+server still works correctly), but a legitimate target for Exercise-style
+improvement: a more efficient version would run <code>ipconfig /all</code>
+ONCE, cache its text, and have both functions parse the SAME captured
+output. Recognizing this kind of "correct but not optimal" code, and
+being able to articulate specifically why it could be improved, is
+itself a real skill.</p>
+<p>The Linux gateway lookup uses <code>ip route show default</code>,
+whose output looks like <code>default via 192.168.1.1 dev eth0</code> —
+the regex <code>r"default via (\S+)"</code> captures everything after
+"default via" up to the next whitespace (<code>\S+</code> means "one or
+more non-whitespace characters") as a captured GROUP, which
+<code>m.group(1)</code> then extracts.</p>
+<p>The DNS-server parsing on Windows is the most intricate piece of text
+parsing in this whole file, because <code>ipconfig /all</code>'s DNS
+section can span MULTIPLE lines when a machine has more than one DNS
+server configured — the first server appears on the same line as the
+label ("DNS Servers . . . : 68.105.28.12"), and additional servers
+appear on SUBSEQUENT, unlabeled, indented lines. The <code>capturing</code>
+boolean flag is a small state machine: once the "DNS Servers" label line
+is seen, <code>capturing</code> flips to <code>True</code>, and every
+SUBSEQUENT line that looks like a bare IP address (matched by
+<code>r"^[\d.:a-fA-F]+$"</code> — note this pattern also matches IPv6
+addresses, which use hex digits and colons) gets appended, until a line
+that DOESN'T look like a bare address is encountered, which resets
+<code>capturing</code> back to <code>False</code>.</p>
+
+<h3>9.6 — <code>get_arp_table()</code> and the deduplication pattern</h3>
+<p>The ARP regex — <code>r"(\d{1,3}(?:\.\d{1,3}){3}).{1,20}?([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}"</code>
+— is worth reading slowly: <code>\d{1,3}(?:\.\d{1,3}){3}</code> matches
+an IPv4-address-SHAPED string (one to three digits, then exactly three
+more groups of "dot plus one-to-three digits" — this is a shape match,
+not a value-range check, so it would technically also match an invalid
+address like <code>999.999.999.999</code>, an acceptable looseness for
+this diagnostic tool's purposes). <code>.{1,20}?</code> is a
+NON-GREEDY wildcard match for whatever separator characters sit between
+the IP and MAC on a given line (varies by OS). The final piece,
+<code>([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}</code>, matches a MAC-address
+shape: five repetitions of "two hex digits followed by a colon or
+hyphen," then one final pair of hex digits with no trailing separator.</p>
+<p>The de-duplication pattern appearing in <code>get_dns_servers()</code>
+— <code>seen = set(); unique = []</code>, then looping and checking
+<code>if s not in seen</code> — is a genuinely common, worth-memorizing
+idiom: a plain <code>list(set(servers))</code> would ALSO deduplicate,
+but sets in Python have NO guaranteed ordering, so that shortcut would
+silently scramble the DNS servers' original order (which matters — the
+FIRST DNS server in the list is typically queried first, so preserving
+order is a real, functional requirement, not cosmetic).</p>
+
+<h2 id="sec10">10. Full Code Walkthrough — netinfo.js, Line By Line</h2>
+
+<h3>10.1 — Why zero npm dependencies</h3>
+<p>Unlike the Python variant (which needs <code>psutil</code>, a
+third-party package), <code>netinfo.js</code> uses ONLY modules built
+directly into Node itself: <code>http</code>, <code>os</code>,
+<code>fs</code>, <code>path</code>, <code>child_process</code>, and
+<code>url</code>. This is a genuine, deliberate design choice this
+module's own <code>DECISIONS.md</code> discusses — it means the Node
+variant runs with literally zero setup beyond having Node installed at
+all (no <code>npm install</code> step, no dependency versions to pin or
+worry about going stale).</p>
+
+<h3>10.2 — <code>getInterfaces()</code> — the structured-vs-parsed contrast, concretely</h3>
+<pre>function getInterfaces() {
+  const raw = os.networkInterfaces();
+  return Object.entries(raw).map(([name, addrList]) => ({
+    name,
+    is_up: !addrList.every((a) => a.internal),
+    ...</pre>
+<p><code>os.networkInterfaces()</code> is Node's built-in, STRUCTURED
+API — it returns a real JavaScript object directly, with no text
+parsing required at all, unlike Python's need to combine
+<code>psutil</code> with regex-based <code>ipconfig</code> parsing just
+for gateway/DNS. <code>Object.entries(raw)</code> converts that object
+into an array of <code>[key, value]</code> pairs so <code>.map()</code>
+can iterate over it (plain JS objects aren't directly iterable the way
+arrays are — this conversion step is a very common, worth-recognizing
+JS idiom).</p>
+<p><code>is_up: !addrList.every((a) => a.internal)</code> deserves a full
+unpacking: Node's <code>os.networkInterfaces()</code> doesn't directly
+expose an "is this interface up/down" flag the way <code>psutil</code>
+does — so this line uses a PROXY signal instead. Each address entry has
+an <code>internal</code> boolean (true specifically for loopback-type
+addresses). <code>addrList.every((a) => a.internal)</code> asks "are
+ALL of this interface's addresses internal/loopback-only?" — if every
+single address is internal, this is almost certainly a loopback-only
+interface with no real external connectivity, so negating that
+(<code>!</code>) gives a crude "is this interface probably up and
+externally usable" signal. This is explicitly flagged in the code's own
+comment as "crude but workable" — a genuinely honest acknowledgment that
+this is an approximation, not a real up/down flag, precisely the kind of
+nuance worth being able to explain rather than just accept silently.</p>
+
+<h3>10.3 — <code>execFileSync</code> vs. Python's <code>subprocess.run</code></h3>
+<pre>function run(cmd, args) {
+  try {
+    return execFileSync(cmd, args, { timeout: 5000 }).toString();
+  } catch (err) {
+    return `&lt;command failed: ${err.message}&gt;`;
+  }
+}</pre>
+<p><code>execFileSync</code> is Node's direct equivalent of Python's
+<code>subprocess.run</code> with <code>shell=False</code> — it takes the
+command and its arguments as SEPARATE parameters (<code>cmd</code>,
+<code>args</code>), exactly like Python's list-based
+<code>["ipconfig", "/all"]</code> approach, for the exact same
+command-injection-prevention reason (Section 9.3). The "Sync" in the name
+means this call BLOCKS the entire Node process until the child command
+finishes — a deliberate simplicity tradeoff appropriate for a small
+diagnostic tool like this one, though a production Node server would
+typically prefer the async, non-blocking <code>execFile</code> variant
+instead to avoid stalling the entire event loop during the external
+command's execution.</p>
+
+<h3>10.4 — The manual HTTP server and routing</h3>
+<pre>const server = http.createServer((req, res) => {
+  const parsed = url.parse(req.url);
+  if (parsed.pathname === "/api/netinfo") { ... }
+  let filePath = parsed.pathname === "/" ? "/dashboard.html" : parsed.pathname;
+  ...</pre>
+<p>Unlike Python's variant (which uses Flask, a real web FRAMEWORK
+handling routing, JSON serialization, and static file serving for you),
+this Node variant is written against Node's raw, built-in
+<code>http</code> module directly — no framework at all. This is a
+deliberate teaching choice: it shows you EXACTLY what a framework like
+Flask (or Express, Node's own most common framework) is actually doing
+under the hood — manually inspecting the request path
+(<code>parsed.pathname</code>), manually branching on it (an if/else
+chain acting as a tiny router), manually reading files from disk and
+setting the correct <code>Content-Type</code> header based on file
+extension (the <code>MIME</code> lookup table). Every later module that
+uses Flask is, underneath, doing exactly this same category of work —
+just with a framework handling the repetitive parts for you.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "What does a web framework
+like Flask actually provide, mechanically, that raw <code>http.createServer</code>
+does not?" A precise answer references THIS module's own Node code as the
+"raw" baseline: request routing (matching a URL path to a handler
+function) that you'd otherwise hand-write as an if/else chain; automatic
+JSON serialization (Flask's <code>jsonify</code> vs. this file's manual
+<code>JSON.stringify</code>); static file serving with correct
+Content-Type headers (Flask's <code>send_from_directory</code> vs. this
+file's manual <code>MIME</code> lookup and <code>fs.readFile</code> call).
+A framework is not a different CAPABILITY — every one of these things is
+achievable with the raw standard library, as this file itself proves —
+it is convenience and reduced boilerplate for functionality you could,
+and here literally did, write by hand.
+</div>
+
+<h2 id="sec11">11. Troubleshooting Scenarios You Will Actually Hit</h2>
+
+<div class="scenario">
+<h4>Scenario: "Address already in use" when starting netinfo_server.py</h4>
+<p>Port 5000 is already occupied by another running process — commonly
+either a PREVIOUS run of this same server you forgot to stop (check for
+a leftover terminal window or background process), or, on macOS
+specifically, Apple's own AirPlay Receiver service, which by default
+also listens on port 5000. Fix: either stop the conflicting process, or
+temporarily change this module's own <code>app.run(..., port=5000)</code>
+call to a different port, like 5001, and adjust the URL you visit
+accordingly.</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: your dashboard shows a completely different, unfamiliar gateway address than you expected</h4>
+<p>Most commonly, this means a VPN client is active and has installed its
+OWN virtual network adapter with its OWN default route, which your OS is
+now preferring over your physical Wi-Fi/Ethernet adapter's route (routing
+tables can and do have multiple candidate routes, with the OS choosing
+based on a "metric" — Module 05 covers route selection precisely). Check
+your FULL interface list in the dashboard — you'll likely see an extra
+adapter (often named something like "TAP-Windows Adapter," "WireGuard,"
+or similar) that wasn't there before you connected the VPN. This is not
+a malfunction — it's the VPN doing exactly what it's designed to do:
+becoming your new default path to the internet.</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: you see MANY more interfaces listed than you expected — 6, 8, or more</h4>
+<p>Modern machines commonly have far more virtual interfaces than
+physical ones. Common culprits: Docker Desktop creates its own virtual
+bridge network adapter(s) even when no containers are currently running;
+Hyper-V (Windows' built-in hypervisor, relevant again in Module 09)
+creates a virtual switch adapter; Bluetooth PAN (Personal Area Network)
+support creates its own adapter even if you've never used Bluetooth
+networking; VPN software (previous scenario) adds its own. None of these
+are errors — a modern laptop genuinely has this many logical network
+interfaces, even though only one or two are physically real, in-use
+connections at any given moment. Learning to recognize which interface
+in a long list is your ACTUAL active connection (look for one with a
+real, non-169.254.x.x IPv4 address and <code>is_up: true</code>) is a
+practical skill you'll use constantly in later, more advanced modules.</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: an interface shows an address starting with 169.254.x.x</h4>
+<p>This is APIPA (Automatic Private IP Addressing) — a special
+fallback range a Windows (and, similarly, other OS) machine assigns
+itself automatically when it's configured to use DHCP but COULDN'T
+successfully reach any DHCP server (Module 08 covers DHCP's full
+mechanism). Seeing this on an interface you expect to be actively
+connected and working is a real diagnostic signal: it means that
+specific interface never successfully completed a DHCP lease, and is
+almost certainly not functioning as a real network connection at all,
+regardless of what its "up/down" status otherwise shows.</p>
+</div>
+
+<h2 id="sec12">12. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 02, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Convert any IPv4 address you're given into its 32-bit binary form,
+octet by octet.</li>
+<li>Given an IP address and a subnet mask (in either dotted-decimal or
+<code>/N</code> form), compute the network address via bitwise AND, by
+hand, and state the usable host range.</li>
+<li>Explain, precisely, why a device needs BOTH a MAC address and an IP
+address, using the "does the packet carry the same MAC the whole way to
+google.com" scenario as your worked example.</li>
+<li>Narrate, step by step, what happens between typing
+<code>ping 192.168.1.80</code> for a device you've never contacted and
+actually receiving a reply — including the ARP request/reply exchange,
+NOT skipping straight to "it just works."</li>
+<li>Explain why your OS consults the default gateway for SOME
+destinations and not others, in terms of the subnet-mask AND comparison
+— not just "far away things use the gateway."</li>
+<li>Explain the difference between your Cox-assigned public IP and your
+laptop's private <code>192.168.x.x</code> address, and name the
+mechanism (NAT) that relates them, even though this course covers NAT's
+full mechanism properly in Module 10.</li>
+<li>Point to a specific line in <code>netinfo_server.py</code> or
+<code>netinfo.js</code> and explain what it does and why it's written
+that way, not just what output it produces.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 02 builds directly on top of the layering intuition
+from Section 1 and the MAC/IP distinction from Section 3, and it moves
+fast.</p>
+
+</body>
+</html>

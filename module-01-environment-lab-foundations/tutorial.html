@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 01 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  nav a { margin-right: 16px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="/">Python dashboard (:5000)</a> <a href="http://127.0.0.1:5050/">Node dashboard (:5050)</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 01 — Tutorial</h1>
+<p>Goal: get both lab variants running, read your own machine's real network
+configuration through code, then cross-check that against the raw OS
+commands yourself so you trust what the code is telling you. Everything
+here reads state your OS already has — nothing sends traffic anywhere yet.</p>
+
+<h2>Step 1 — Python variant</h2>
+<pre># Windows
+cd module-01-environment-lab-foundations
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python netinfo_server.py
+
+# macOS/Linux
+cd module-01-environment-lab-foundations
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python netinfo_server.py</pre>
+<div class="expect"><strong>Expected output:</strong>
+<pre>================================================================
+ Module 01 (Python) lab is up.
+ Dashboard : http://127.0.0.1:5000
+ Raw JSON  : http://127.0.0.1:5000/api/netinfo
+================================================================
+ * Running on http://127.0.0.1:5000</pre>
+Open <code>http://127.0.0.1:5000</code> — you should see a table of your
+real network interfaces, a default gateway that looks like
+<code>192.168.x.1</code> or <code>10.x.x.1</code>, and DNS servers that (if
+you're on Cox) will typically be in the <code>68.105.x.x</code> range.
+</div>
+
+<h2>Step 2 — Node variant (leave Python running, open a second terminal)</h2>
+<pre>cd module-01-environment-lab-foundations
+node netinfo.js</pre>
+<div class="expect"><strong>Expected output:</strong>
+<pre>================================================================
+ Module 01 (Node) lab is up.
+ Dashboard : http://127.0.0.1:5050
+ Raw JSON  : http://127.0.0.1:5050/api/netinfo
+================================================================</pre>
+Open <code>http://127.0.0.1:5050</code> in a second tab. It's the exact same
+dashboard frontend as Python's — same HTML, same JS fetch logic — pointed at
+a completely different backend implementation. The gateway and DNS values
+should match exactly between both dashboards, because they're both reading
+the same underlying OS state through different APIs.
+</div>
+
+<div class="note">
+<strong>Compare the two implementations directly:</strong> open
+<code>netinfo_server.py</code> and <code>netinfo.js</code> side by side.
+Python needed <code>psutil</code> for structured interface data but still
+had to text-parse <code>ipconfig /all</code> for gateway/DNS. Node's
+<code>os.networkInterfaces()</code> gives you structured interface data with
+zero external dependencies — but Node <em>also</em> has to text-parse
+<code>ipconfig /all</code> for gateway/DNS, because neither language's
+standard library exposes routing-table or resolver info directly. That's not
+a language limitation — it reflects that gateway/DNS config genuinely lives
+in OS-specific subsystems with no universal API, so both languages fall back
+to the same OS commands you're about to run by hand.
+</div>
+
+<h2>Step 3 — verify the code against the OS directly</h2>
+<p>Don't take the dashboards' word for it. Run these yourself and confirm
+the numbers match what both dashboards showed:</p>
+<pre># Windows
+ipconfig /all
+ping 192.168.0.1        REM replace with your actual gateway
+tracert 8.8.8.8
+arp -a
+
+# macOS/Linux
+ifconfig            (or: ip addr)
+ping -c 4 192.168.0.1
+traceroute 8.8.8.8
+arp -a</pre>
+<div class="expect"><strong>Expected:</strong> the gateway IP in your
+<code>ipconfig</code>/<code>ifconfig</code> output should be the exact same
+address both dashboards reported. <code>ping</code> to your gateway should
+succeed with sub-5ms latency (it's one hop, on your own LAN).
+<code>tracert</code>/<code>traceroute</code> to 8.8.8.8 should show your
+gateway as hop 1, then jump out to Cox's network for the next few hops
+before reaching Google's network — this is your first real look at routing,
+which Module 05 covers properly.
+</div>
+
+<h2>Step 4 — put something in the ARP table on purpose</h2>
+<p>If your dashboard's ARP table looked sparse, that's because your machine
+only remembers devices it's recently talked to. Generate a fresh entry:</p>
+<pre># ping a device on your LAN you haven't talked to recently — your phone's
+# IP, a smart TV, another laptop. Check your router's admin page for a
+# device list if you don't know one offhand.
+ping 192.168.0.50      REM use a real IP from your own network</pre>
+<p>Refresh either dashboard — that device should now appear in the ARP
+table. This is the mechanic Module 03 builds on: your machine had to
+broadcast "who has 192.168.0.50?" and cache the MAC address that answered.</p>
+
+<h2>Exercises before Module 02</h2>
+<ol>
+  <li><strong>Add a "last updated" timestamp</strong> to both
+      <code>/api/netinfo</code> responses (Python: <code>datetime.now().isoformat()</code>;
+      Node: <code>new Date().toISOString()</code>) and display it on the
+      dashboard. This is your first small edit to lab code you didn't
+      write from scratch — get comfortable modifying both variants.</li>
+  <li><strong>Add an interface filter.</strong> Both dashboards currently
+      show every interface, including inactive VPN/virtual adapters. Add a
+      query param (<code>/api/netinfo?up_only=true</code>) that filters to
+      only interfaces where <code>is_up</code> is true, in both the Python
+      and Node servers.</li>
+  <li><strong>Explain the gap.</strong> In your own words (a few sentences,
+      doesn't need to be a file yet — Module 18 wants a formal write-up
+      habit, this is just practice) — why does neither Python's standard
+      library nor Node's expose default gateway or DNS servers directly,
+      when both expose interface addresses directly? What does that tell
+      you about how "structured" networking APIs versus OS shell commands
+      are layered on most operating systems?</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 02:</strong> you should have both dashboards running
+side by side, have verified their numbers against raw OS commands yourself,
+and have a fresh ARP entry you personally created. Module 02 starts
+capturing the actual bytes going by on the wire (Wireshark/tcpdump) and
+mapping every one to a layer of the OSI/TCP-IP model — this module was about
+knowing your own starting state before you watch traffic move.
+</div>
+
+</body>
+</html>
