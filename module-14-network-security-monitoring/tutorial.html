@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 14 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 14 — Tutorial</h1>
+<p>Goal: detect a port scan and a C2 beacon in real Zeek log format using
+your own statistical reasoning, then write and fire real Suricata-syntax
+signature rules — before installing the real tools in Module 09's lab.</p>
+
+<h2>Step 1 — generate synthetic traffic and find the attacks in it</h2>
+<pre>cd module-14-network-security-monitoring
+python generate_conn_log.py
+python conn_log_analyzer.py</pre>
+<div class="expect"><strong>Expected:</strong> the port-scan detector finds
+<code>192.168.1.30</code> touching 15+ distinct ports on
+<code>192.168.1.99</code> within 10 seconds. The beaconing detector finds
+<code>192.168.1.10 -> 203.0.113.66:443</code> with ~60-second intervals and
+low jitter. Neither pattern was labeled in the log file — both were found
+purely from statistical properties of the connection records.</div>
+
+<div class="note">
+<strong>A real refinement made during this module's own testing:</strong>
+the first version of the beaconing detector also flagged the port scan
+(fast, perfectly-regular connections are "low jitter" too). Adding a
+same-destination-port requirement and a minimum-interval threshold fixed
+this — real beacons hit the same port repeatedly; a scan doesn't. This is
+a genuine lesson about detection engineering: a single signal is rarely
+enough, and false-positive overlap between detectors is normal, not a bug
+to be embarrassed about.
+</div>
+
+<h2>Step 2 — the JS variant, and cross-format compatibility</h2>
+<pre>node generate_conn_log.js
+node conn_log_analyzer.js conn_node.log
+python conn_log_analyzer.py conn_node.log</pre>
+<div class="expect"><strong>Expected:</strong> the Python analyzer
+correctly reads the Node-generated log file and finds the identical
+patterns — confirmed during this module's build. The Zeek conn.log TSV
+format is just text; nothing about it is Python- or Node-specific.</div>
+
+<h2>Step 3 — Suricata/Snort-style signature matching</h2>
+<pre>python mini_ids_rules.py</pre>
+<div class="expect"><strong>Expected:</strong> 4 alerts out of 7 sample
+HTTP-like packets — a SQL injection attempt, a directory traversal
+attempt, a cleartext password field, and a suspicious User-Agent string.
+The 3 benign packets produce no alerts. Read <code>DEFAULT_RULES_TEXT</code>
+— this is genuine Suricata/Snort rule syntax, not an invented format.</div>
+
+<h2>Step 4 — Wireshark, at a deeper level</h2>
+<p>Work through <code>wireshark_mastery_checklist.html</code> completely,
+against any capture you saved from an earlier module. Pay special
+attention to Statistics → Conversations — sort by bytes and confirm you
+can identify the largest data transfer in any capture within seconds.</p>
+
+<h2>Step 5 (in your Module 09 virtual lab) — the real tools</h2>
+<p>Follow <code>zeek_suricata_install_guide.md</code> completely. Confirm
+this module's own <code>conn_log_analyzer.py</code> correctly parses a
+REAL Zeek <code>conn.log</code>, not just the synthetic one generated here.</p>
+
+<h2>Exercises before Module 15</h2>
+<ol>
+  <li><strong>Add a data-exfiltration detector.</strong> A large,
+      one-directional data transfer (huge <code>orig_bytes</code>, tiny
+      <code>resp_bytes</code>) to an unfamiliar external host is a classic
+      exfiltration signature. Add <code>detect_large_exfil()</code> to
+      both language variants.</li>
+  <li><strong>Write a rule that fires on your own Module 08 traffic.</strong>
+      Add a rule to <code>mini_ids_rules.py</code>/<code>.js</code> matching
+      the marker string from Module 08's HTTP server
+      (<code>LAYER-DEMO-PAYLOAD-92f1</code> from Module 02, or Module 08's
+      own hand-rolled server's body text) and confirm it fires against a
+      real captured request.</li>
+  <li><strong>Reduce false positives further.</strong> Real production IDS
+      tuning is mostly about reducing false positives without missing real
+      attacks. Add a "well-known good beacon" allowlist (e.g., legitimate
+      periodic health-check traffic) to <code>detect_beaconing</code> and
+      explain, in a few sentences, why allowlisting known-good regular
+      traffic is usually safer than trying to make the detection threshold
+      itself smarter.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 15:</strong> you should be able to explain, from
+memory, what makes beaconing traffic statistically different from normal
+human browsing, and be comfortable reading and writing basic Suricata-style
+signature rules. Module 15 takes this module's alerts and log parsing and
+builds a real, running SIEM pipeline (ELK + Grafana) to collect and
+visualize them continuously instead of running one script at a time.
+</div>
+
+</body>
+</html>

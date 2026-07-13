@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 14 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 14 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+compute a jitter ratio by hand on raw timing data, explain precisely why
+timing regularity ALONE cannot distinguish beaconing from scanning, parse
+real Suricata rule syntax field by field, and reason about detection
+false-positive tradeoffs like a real detection engineer.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">Zeek's conn.log format, field by field</a></li>
+<li><a href="#sec2">Port scan detection — the sliding window, traced completely</a></li>
+<li><a href="#sec3">Jitter ratio — the actual statistic, computed by hand</a></li>
+<li><a href="#sec4">Why timing alone can't distinguish beaconing from scanning</a></li>
+<li><a href="#sec5">The base rate fallacy — why "99% accurate" can still be useless</a></li>
+<li><a href="#sec6">Suricata/Snort rule syntax, decoded completely</a></li>
+<li><a href="#sec7">Full code walkthrough — detect_beaconing()'s full logic</a></li>
+<li><a href="#sec8">Many worked scenarios — hand-tracing the detectors</a></li>
+<li><a href="#sec9">Troubleshooting and common confusions</a></li>
+<li><a href="#sec10">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. Zeek's conn.log Format, Field By Field</h2>
+
+<p><code>parse_conn_log()</code>'s field unpacking —
+<code>ts, uid, orig_h, orig_p, resp_h, resp_p, proto, service, duration,
+orig_bytes, resp_bytes</code> — corresponds EXACTLY to real Zeek
+conn.log's own (simplified, tab-separated) column structure.</p>
+
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>ts</code></td><td>Timestamp (Unix epoch seconds, floating point for sub-second precision) — the SAME representation Module 18's libpcap format uses for packet timestamps, just at the CONNECTION level (one row per connection) rather than the PACKET level (one row per packet)</td></tr>
+<tr><td><code>uid</code></td><td>A unique identifier Zeek assigns to each connection — lets you cross-reference the SAME connection across Zeek's OTHER log files (http.log, dns.log, etc.), a genuinely useful correlation key in real incident investigation (directly relevant to Module 18's forensic reconstruction skillset)</td></tr>
+<tr><td><code>orig_h</code> / <code>orig_p</code></td><td>The connection ORIGINATOR's host and port — "orig" specifically because Zeek doesn't assume which side is the "client" in a strict sense, just which side initiated the connection</td></tr>
+<tr><td><code>resp_h</code> / <code>resp_p</code></td><td>The RESPONDER's host and port</td></tr>
+<tr><td><code>duration</code></td><td>How long the connection lasted, in seconds</td></tr>
+<tr><td><code>orig_bytes</code> / <code>resp_bytes</code></td><td>Total payload bytes sent in EACH direction — this asymmetry is EXACTLY what a real exfiltration detector (this module's own Exercise 1) would key on: large <code>orig_bytes</code>, tiny <code>resp_bytes</code>, to an unfamiliar host</td></tr>
+</table>
+
+<h2 id="sec2">2. Port Scan Detection — The Sliding Window, Traced Completely</h2>
+
+<pre>window_ports = set()
+window_start_ts = None
+for r in conns:
+    if window_start_ts is None or r["ts"] - window_start_ts > window_seconds:
+        window_start_ts = r["ts"]
+        window_ports = set()
+    window_ports.add(r["resp_p"])
+    if len(window_ports) >= min_distinct_ports:
+        findings.append(...)
+        break</pre>
+
+<div class="scenario">
+<h4>Fully traced: a simplified 6-connection sequence, showing exactly when the window resets</h4>
+<pre>Connections (already sorted by timestamp), same src->dst pair:
+  ts=100, port=22
+  ts=101, port=23
+  ts=102, port=80
+  ts=115, port=443    <- 115-100 = 15s, EXCEEDS window_seconds(10) -- RESETS
+  ts=116, port=8080
+  ts=117, port=3389
+
+Trace:
+  ts=100: window_start=None -> RESET. window_start=100. Add port 22. {22} (1 port)
+  ts=101: 101-100=1, within window. Add port 23. {22,23} (2 ports)
+  ts=102: 102-100=2, within window. Add port 80. {22,23,80} (3 ports)
+  ts=115: 115-100=15 > 10 -- WINDOW RESETS. window_start=115. window_ports={}
+          Add port 443. {443} (1 port)
+  ts=116: 116-115=1, within window. Add port 8080. {443,8080} (2 ports)
+  ts=117: 117-115=2, within window. Add port 3389. {443,8080,3389} (3 ports)
+
+Final: only 3 distinct ports within any SINGLE 10-second window -- below
+min_distinct_ports(15) -- NO alert, despite 6 total connections across
+the whole log. This is EXACTLY the point of a SLIDING/RESETTING window
+rather than a simple "count everything ever seen": scattered,
+infrequent port touches over a long period look nothing like the tight,
+rapid burst a real port scan produces.</pre>
+</div>
+
+<div class="why">
+<strong>Why does the window RESET (rather than sliding continuously,
+dropping only the OLDEST entry) when a gap exceeds window_seconds?</strong>
+This is a genuine, deliberate simplification worth understanding
+precisely: this module's implementation uses a "tumbling window" reset
+strategy (start fresh whenever a gap is detected) rather than a true
+continuously-sliding window (which would require tracking EVERY
+connection's exact age relative to the CURRENT connection, discarding
+individually as each ages out). The tumbling approach is simpler to
+implement and reason about, and for the specific pattern being detected
+(a CONCENTRATED BURST of port touches), correctly identifies genuine
+scan bursts — the tradeoff is a scan that happens to straddle EXACTLY
+a reset boundary could theoretically be undercounted, a real, honest
+limitation worth knowing about rather than assuming this detector is
+mathematically perfect.
+</div>
+
+<h2 id="sec3">3. Jitter Ratio — The Actual Statistic, Computed By Hand</h2>
+
+<p>The JITTER RATIO (this module's own code:
+<code>jitter_ratio = stdev_interval / mean_interval</code>) is
+formally known as the COEFFICIENT OF VARIATION — a standard statistical
+measure of RELATIVE variability, worth computing by hand at least once
+to fully internalize.</p>
+
+<div class="scenario">
+<h4>Worked scenario: computing jitter ratio for a genuinely regular (beacon-like) sequence</h4>
+<pre>Connection timestamps: 0, 60, 121, 179, 241 (roughly every 60 seconds)
+
+Intervals between consecutive connections:
+  60-0=60, 121-60=61, 179-121=58, 241-179=62
+
+Mean interval: (60+61+58+62)/4 = 241/4 = 60.25
+
+Deviations from mean: 60-60.25=-0.25, 61-60.25=0.75, 58-60.25=-2.25, 62-60.25=1.75
+Squared deviations: 0.0625, 0.5625, 5.0625, 3.0625
+Sum of squared deviations: 8.75
+Population variance: 8.75 / 4 = 2.1875
+Population stdev: sqrt(2.1875) ≈ 1.479
+
+Jitter ratio: 1.479 / 60.25 ≈ 0.0245
+
+0.0245 is FAR below max_jitter_ratio(0.15) -- this sequence would be
+flagged as beaconing: its timing variance is a tiny FRACTION of its
+average interval, exactly the "suspiciously regular" signature a
+human-driven browsing session essentially never produces by chance.</pre>
+</div>
+
+<div class="why">
+<strong>Why divide by the MEAN (producing a RATIO) rather than just
+using the raw standard deviation directly as the detection threshold?</strong>
+A FIXED standard-deviation threshold would behave very differently for
+beacons with DIFFERENT average intervals — a beacon checking in every 5
+seconds with ±0.5 seconds of jitter (highly regular, relatively) has a
+SMALLER raw stdev than a beacon checking in every 300 seconds with ±10
+seconds of jitter (ALSO highly regular, relatively, but a LARGER raw
+stdev) — a single fixed stdev threshold would incorrectly treat these
+very differently-scaled but EQUALLY suspicious patterns inconsistently.
+Dividing by the mean NORMALIZES the variability relative to the
+interval's own scale, making the SAME 0.15 threshold meaningfully
+comparable across beacons with wildly different check-in frequencies —
+a genuinely important statistical normalization technique, not an
+arbitrary implementation detail.
+</div>
+
+<h2 id="sec4">4. Why Timing Alone Can't Distinguish Beaconing From Scanning</h2>
+
+<p>This module's own real, documented bug (the first beaconing detector
+also flagged the port scan) is worth understanding completely, not just
+noting as a historical footnote.</p>
+
+<div class="scenario">
+<h4>Precisely why a fast port scan ALSO produces a low jitter ratio</h4>
+<pre>A rapid, automated port scan often sends probes at VERY consistent,
+tight intervals -- e.g., exactly every 0.05 seconds, because it's
+generated by a simple, tight software loop with essentially no
+variability at all (arguably MORE mechanically regular than many real
+beacons, which often have realistic network-delay jitter). Computing a
+jitter ratio on THESE intervals would find EXTREMELY low jitter --
+exactly the same "suspiciously regular" signal the beaconing detector
+was designed to catch.
+
+The genuine, real fix (documented directly in this module's own code
+comments) required TWO additional constraints working TOGETHER, not
+just tuning the jitter threshold:
+  1. SAME DESTINATION PORT required (by_src_dst_port groups by port too,
+     not just src/dst host) -- a scan touches MANY DIFFERENT ports by
+     definition; a beacon calls home to the SAME service/port every time.
+  2. min_interval_seconds -- excludes scan-speed (sub-second) intervals
+     outright, since real C2 beacons operate on human-meaningful
+     timescales (seconds to minutes), not scan-speed milliseconds.</pre>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "A detection engineer
+observes that timing regularity alone produces a false positive on
+scan traffic. Should they fix this by making the jitter threshold
+STRICTER, or by adding an additional, DIFFERENT signal? Justify your
+answer using this module's own real example." Adding a DIFFERENT signal
+(same-port constraint, minimum interval) is the correct fix, not
+tightening the SAME signal further — this module's own documented
+finding demonstrates WHY: both port scans and beacons can be
+ARBITRARILY regular in timing (a scan's regularity is a function of the
+scanning TOOL's implementation, not inherently different in KIND from a
+beacon's regularity) — no jitter THRESHOLD, however finely tuned, can
+reliably separate two populations that can both legitimately produce
+near-zero jitter. A genuinely DIFFERENT dimension (destination port
+constancy, which scans and beacons behave OPPOSITELY on by their very
+nature) is what actually provides real discriminating power — this is a
+general, transferable detection-engineering principle: when one signal
+produces overlapping false positives, look for an ORTHOGONAL signal, not
+just a stricter threshold on the same one.
+</div>
+
+<h2 id="sec5">5. The Base Rate Fallacy — Why "99% Accurate" Can Still Be Useless</h2>
+
+<div class="scenario">
+<h4>Worked numerical scenario: why a "99% accurate" detector can still produce mostly false alarms</h4>
+<pre>Suppose, on a real large network, genuine beaconing malware exists on
+exactly 1 out of 10,000 hosts (a realistic, LOW base rate -- most hosts
+are NOT compromised at any given time).
+
+A detector that's "99% accurate" -- meaning it correctly flags 99% of
+TRUE beacons (very few missed) AND correctly clears 99% of TRUE benign
+hosts (only 1% false positive rate) -- applied across all 10,000 hosts:
+
+  True beacon (1 host): 99% chance correctly flagged -> ~1 true alert
+  Benign hosts (9,999 hosts): 1% false positive rate ->
+    9,999 * 0.01 ≈ 100 FALSE alerts
+
+Total alerts: ~101, of which only ~1 is real -- meaning even at "99%
+accuracy," roughly 99% of the ALERTS THEMSELVES are false positives,
+purely because the true base rate of actual beaconing is so low that
+even a small false-positive PERCENTAGE produces an overwhelming ABSOLUTE
+number of false alerts.</pre>
+</div>
+
+<div class="why">
+<strong>Why does this matter for how this module's own detectors should
+actually be evaluated in a real deployment?</strong> A detector's
+per-class accuracy percentages ALONE are insufficient to judge its
+real-world usefulness — the ACTUAL BASE RATE of the thing being detected
+(genuinely rare, for real malicious beaconing on most networks) means
+even a well-tuned detector will produce MANY MORE false alerts than
+true ones in absolute terms, unless its false-positive rate is
+EXTREMELY low (far lower than a naively-impressive-sounding "99%").
+This is EXACTLY why this module's own Exercise 3 (add an allowlist for
+known-good regular traffic, e.g., legitimate health-check pings) is
+framed as often SAFER than trying to make the detection threshold itself
+smarter — explicitly excluding KNOWN sources of false positives reduces
+the effective false-positive rate directly and reliably, rather than
+hoping a single numeric threshold can somehow thread an impossibly fine
+needle between all true and false cases simultaneously.
+</div>
+
+<h2 id="sec6">6. Suricata/Snort Rule Syntax, Decoded Completely</h2>
+
+<div class="scenario">
+<h4>Worked scenario: fully decoding a real rule from this module's own DEFAULT_RULES_TEXT</h4>
+<pre>alert tcp any any -> any any (msg:"Possible SQL injection attempt"; content:"OR 1=1"; nocase; sid:1000001;)
+
+alert       -- ACTION: generate an alert (vs. "drop," "pass," etc. in
+               real Suricata -- this module's engine only implements
+               the alert action, per its own honest scope)
+tcp         -- PROTOCOL: match TCP traffic
+any any     -- SOURCE IP, SOURCE PORT: "any" matches everything (this
+               module's engine simplifies matching to ignore these
+               entirely, per its own header comment -- a real Suricata
+               rule could narrow these to specific IPs/ports)
+->          -- DIRECTIONAL operator: traffic flowing FROM source TO
+               destination (Suricata also supports <> for bidirectional)
+any any     -- DESTINATION IP, DESTINATION PORT
+(...)       -- RULE OPTIONS, semicolon-separated:
+  msg:"..."     -- human-readable description shown when this rule fires
+  content:"..." -- the literal byte/string pattern to search for in the
+                   payload -- THIS is the actual detection logic
+  nocase        -- perform the content match CASE-INSENSITIVELY
+  sid:1000001   -- Signature ID -- a unique, stable identifier for THIS
+                   specific rule, used for tracking/tuning/referencing
+                   it independently of its (potentially-changing)
+                   message text</pre>
+</div>
+
+<div class="why">
+<strong>Why does every real Suricata/Snort rule require a unique
+<code>sid</code>, separate from its human-readable <code>msg</code>?</strong>
+The <code>msg</code> text is meant for HUMANS reading an alert and can
+change over time (a rule maintainer might improve the wording) without
+that being a meaningfully different rule. The <code>sid</code> is the
+STABLE, MACHINE-REFERENCEABLE identity of a specific detection logic —
+used for suppressing/tuning a SPECIFIC rule (a real SOC might disable
+sid:1000001 specifically if it's producing too many false positives,
+without touching any other rule), tracking which rule fired in log
+analysis tooling, and cross-referencing a specific rule across
+different rule-set versions — a genuinely necessary separation between
+"what a human reads" and "what a machine tracks," directly parallel to
+Module 18's <code>uid</code> field serving an analogous
+machine-reference role for connections.
+</div>
+
+<h2 id="sec7">7. Full Code Walkthrough — detect_beaconing()'s Full Logic</h2>
+
+<pre>if len(conns) < min_occurrences:
+    continue
+...
+if len(intervals) < min_occurrences - 1:
+    continue</pre>
+<p>These TWO separate minimum-count checks matter for slightly different
+reasons: <code>min_occurrences</code> ensures there's ENOUGH DATA for
+the statistical reasoning (jitter ratio) to be MEANINGFUL at all — a
+statistic computed from just 2-3 data points is not reliable evidence of
+a genuine PATTERN, versus coincidence. The second check
+(<code>len(intervals) < min_occurrences - 1</code>) is a defensive
+consistency check — with N connections there are always exactly N-1
+intervals between them, so this check is technically redundant GIVEN the
+first check already passed, but serves as an explicit, readable
+safeguard against any future code change that might decouple these two
+counts unexpectedly — a genuinely reasonable defensive-programming
+habit, even when technically provably redundant given the current logic.</p>
+
+<h2 id="sec8">8. Many Worked Scenarios — Hand-Tracing The Detectors</h2>
+
+<div class="scenario">
+<h4>Scenario: would a legitimate NTP client (checking a time server every 64 seconds, extremely consistently) get flagged as beaconing?</h4>
+<pre>NTP check-ins: same destination host, same destination port (123, NTP's
+well-known port) -- passes the "same port" constraint. Interval ~64
+seconds -- passes min_interval_seconds. Extremely low jitter (NTP
+clients ARE deliberately, mechanically regular) -- likely UNDER
+max_jitter_ratio.
+
+Verdict: YES, this detector, as built, WOULD likely flag legitimate NTP
+traffic as "beaconing" -- a genuine, real false positive this module's
+own Exercise 3 (allowlisting known-good regular traffic) is specifically
+designed to address. This is not a flaw unique to this module's
+simplified detector -- distinguishing "legitimate regular service
+traffic" from "malicious regular beaconing" using timing signatures
+ALONE is a genuinely hard, real problem in production network security
+monitoring, which is exactly why real deployments layer MULTIPLE
+signals (destination reputation, payload inspection, allowlisting known
+services) rather than relying on timing regularity in isolation.</pre>
+</div>
+
+<h2 id="sec9">9. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming "no alert fired" means "no attack
+happened."</strong> Every detector in this module operates on SPECIFIC,
+NAMED statistical signatures (port-count-in-a-window for scans,
+timing-regularity-plus-port-constancy for beacons) — an attack that
+doesn't match these SPECIFIC patterns (a slow, low-and-slow scan spread
+over hours instead of a tight burst; a beacon with deliberately injected
+random jitter specifically to evade jitter-ratio detection, a REAL
+evasion technique actual malware authors use) would produce NO alert
+from these specific detectors, without that meaning the network is
+actually clean. Detection rules always have a SCOPE — understanding
+precisely what a detector DOES and DOES NOT cover is as important as
+knowing it exists at all.
+</div>
+
+<h2 id="sec10">10. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 15, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Trace the port-scan sliding-window logic by hand on a given sequence
+of timestamped connections.</li>
+<li>Compute a jitter ratio (coefficient of variation) by hand from raw
+interval data, and explain why dividing by the mean matters.</li>
+<li>Explain precisely why timing regularity alone cannot distinguish
+beaconing from scanning, and what TWO additional constraints fixed this
+module's own real, documented false positive.</li>
+<li>Work through the base-rate fallacy numerically, explaining why a
+"99% accurate" detector can still produce mostly false alerts on a
+low-base-rate population.</li>
+<li>Decode any Suricata/Snort-style rule field by field, including
+explaining WHY sid and msg serve different, non-redundant purposes.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 15 takes these exact detectors and wires them into
+a real, running SIEM pipeline, and assumes you already understand WHY
+each detector works (not just that it does) well enough to reason about
+tuning it in a real, ongoing deployment.</p>
+
+</body>
+</html>

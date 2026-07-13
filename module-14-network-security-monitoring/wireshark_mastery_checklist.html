@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Wireshark Mastery Checklist — Module 14</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 24px; }
+  td, th { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; font-size: 0.92rem; }
+  th { background: #f4f4f4; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 10px 14px; border-radius: 6px; overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<h1>Wireshark Mastery Checklist</h1>
+<p>You've used Wireshark since Module 02. This is the point where casual
+familiarity becomes fluency -- go through this against a real capture from
+ANY earlier module's traffic (Module 07's TCP/UDP echo demos work well).</p>
+
+<h2>Display filters beyond the basics</h2>
+<table>
+<tr><th>Filter</th><th>What it finds</th></tr>
+<tr><td><code>tcp.flags.syn==1 and tcp.flags.ack==0</code></td><td>Only the FIRST packet of every TCP handshake -- great for counting distinct connection attempts, exactly what Module 14's port-scan detector does statistically.</td></tr>
+<tr><td><code>tcp.analysis.retransmission</code></td><td>Every segment Wireshark's own heuristics flagged as a retransmit -- direct visual evidence of Module 07's "TCP resends what wasn't acknowledged" behavior.</td></tr>
+<tr><td><code>http.request.method=="POST"</code></td><td>Only POST requests -- useful for spotting form submissions/logins in a capture.</td></tr>
+<tr><td><code>tls.handshake.type==1</code></td><td>Only TLS ClientHello messages -- find every negotiation attempt without wading through the encrypted data that follows.</td></tr>
+<tr><td><code>ip.addr==192.168.1.30 and tcp.flags.syn==1</code></td><td>Every SYN FROM or TO a specific host -- manually reconstructing what Module 14's port-scan detector does automatically.</td></tr>
+</table>
+
+<h2>Statistics menu -- underused, extremely powerful</h2>
+<table>
+<tr><th>Tool</th><th>What it shows</th></tr>
+<tr><td><strong>Statistics → Protocol Hierarchy</strong></td><td>A tree breakdown of every protocol present in the capture and what % of packets/bytes each represents -- your first move on any unfamiliar capture.</td></tr>
+<tr><td><strong>Statistics → Conversations</strong></td><td>Every unique src/dst pair with packet/byte counts and duration -- sort by "Bytes" to instantly find the biggest data transfers in a capture.</td></tr>
+<tr><td><strong>Statistics → Endpoints</strong></td><td>Every unique host that appears, with total traffic -- useful for spotting an unexpected IP that shouldn't be talking on your network at all.</td></tr>
+<tr><td><strong>Right-click a packet → Follow → TCP Stream</strong></td><td>Reassembles an entire conversation's payload in order, both directions color-coded -- this is how you actually READ an HTTP exchange or any text protocol end to end instead of packet by packet.</td></tr>
+</table>
+
+<h2>Exporting for other tools (including this module's own analyzer)</h2>
+<pre># Export a capture's connections as CSV for further analysis
+tshark -r capture.pcapng -q -z conv,tcp
+
+# Or, closer to Zeek's own conn.log format directly from tshark:
+tshark -r capture.pcapng -T fields -e frame.time_epoch -e ip.src -e tcp.srcport \
+  -e ip.dst -e tcp.dstport -e ip.proto</pre>
+<p>This is genuinely how you'd bridge a raw Wireshark/tshark capture into
+something shaped like <code>conn_log_analyzer.py</code>'s expected input --
+worth trying against one of your own earlier captures as an exercise.</p>
+
+</body>
+</html>

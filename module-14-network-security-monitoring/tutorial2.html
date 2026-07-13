@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 14 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 14 — Deep Theory: Detection Engineering, Formally</h1>
+
+<h2>1. Jitter Ratio, Formally Defined</h2>
+<p><code>conn_log_analyzer.py</code>'s beaconing detector computes
+<code>jitter_ratio = stdev(intervals) / mean(intervals)</code> — this is
+formally the COEFFICIENT OF VARIATION, a standard statistics concept
+measuring RELATIVE variability (variability scaled by the mean),
+distinct from raw standard deviation (which measures ABSOLUTE
+variability, not comparable across datasets with different means). Using
+the coefficient of variation rather than raw standard deviation matters
+here specifically because a "regular" beacon checking in every 5 seconds
+and one checking in every 300 seconds should both be flagged as
+suspicious if their TIMING PRECISION is similarly tight relative to their
+own interval — raw standard deviation alone would make the 300-second
+beacon's variability look artificially "larger" even if it's equally
+precise proportionally.</p>
+
+<h2>2. Suricata/Snort Rule Anatomy, Fully Formal</h2>
+<p>A rule's HEADER (<code>action protocol src_ip src_port -> dst_ip dst_port</code>)
+and OPTIONS (in parentheses) are two structurally separate parts:</p>
+<pre>alert tcp any any -> any any (msg:"..."; content:"OR 1=1"; nocase; sid:1000001;)
+^     ^   ^^^ ^^^    ^^^ ^^^   ^--- options: matching conditions + metadata
+|     |   +-- source (any host, any port)
+|     +------ protocol
++------------ action (what to do on match: alert, drop, pass, reject)</pre>
+<p><code>content</code> performs a literal byte-substring match against
+the packet payload — <code>nocase</code> makes it case-insensitive.
+<code>sid</code> (signature ID) is a required, globally-unique identifier
+for the rule, used for referencing, tuning, and disabling specific rules
+without needing to match on the rule's full text.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why is content-based
+signature matching (this module's mini_ids_rules.py) fundamentally
+limited compared to behavioral/statistical detection
+(conn_log_analyzer.py), and why do production security programs run
+BOTH rather than choosing one?" Content matching can only detect
+patterns it was EXPLICITLY told to look for — a novel attack using
+different exact bytes for the same underlying technique (e.g., a
+differently-encoded SQL injection payload) sails through undetected.
+Behavioral detection catches STATISTICALLY anomalous patterns regardless
+of the specific bytes involved, but is inherently fuzzier (more prone to
+false positives, as this module's own port-scan/beaconing overlap
+demonstrated) and can't identify WHICH specific known threat is present,
+only that something looks unusual. Running both provides defense in
+depth against each approach's distinct blind spot.
+</div>
+
+<h2>3. The Base Rate Fallacy: Why "99% Accurate" Detection Can Still Be Useless</h2>
+<p>This is one of the single most important, and most frequently
+misunderstood, concepts in real detection engineering, and a classic
+comprehensive-exam topic. Consider a detector with a 1% false positive
+rate, run against 1,000,000 connections per day, where only 10 of those
+connections are ACTUALLY malicious:</p>
+<pre>True positives (correctly flagged attacks):     ~10 (assuming near-perfect recall)
+False positives (benign traffic incorrectly flagged): 1,000,000 x 1% = ~10,000</pre>
+<div class="brain">
+<strong>Brain power:</strong> even with a seemingly excellent 99%
+accuracy rate, an analyst reviewing alerts would see roughly 10,000
+false alarms for every 10 real attacks — meaning the overwhelming
+majority of alerts (over 99.9%) are noise, not signal. This is precisely
+WHY "alert fatigue" is a genuine, documented, serious problem in real
+Security Operations Centers, and why the actual practice of detection
+engineering (this module's own port-scan/beaconing refinement is a small
+real example) obsesses over minimizing false positive RATE specifically,
+not just achieving high overall "accuracy" — because the base rate of
+actual attacks in normal traffic is typically extremely low, making even
+small false-positive percentages produce overwhelming absolute noise.
+</div>
+
+<h2>4. Precision, Recall, and the Tradeoff Between Them</h2>
+<table>
+<tr><th>Metric</th><th>Formula</th><th>What it answers</th></tr>
+<tr><td>Precision</td><td>True Positives / (True Positives + False Positives)</td><td>"Of everything I flagged, how much was actually real?"</td></tr>
+<tr><td>Recall (Sensitivity)</td><td>True Positives / (True Positives + False Negatives)</td><td>"Of everything actually real, how much did I catch?"</td></tr>
+</table>
+<p>These trade off against each other: a detector tuned to catch EVERY
+possible attack (maximize recall) will necessarily flag more borderline/
+ambiguous cases too (lower precision, more false positives — exactly
+Module 14's own beaconing detector before its port-constancy refinement).
+A detector tuned to only fire when VERY confident (maximize precision)
+will necessarily miss some real, subtler attacks (lower recall). Real
+detection engineering is a continuous exercise in choosing where on this
+tradeoff curve a given detector should sit, based on the actual cost of
+each error type in context.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Coefficient of variation (jitter ratio)</td><td>General statistical literacy for any anomaly-detection reasoning</td></tr>
+<tr><td>Suricata rule anatomy</td><td>Module 16's authorized IDS/IPS deployment against lab targets</td></tr>
+<tr><td>Base rate fallacy</td><td>Core, frequently-tested comprehensive-exam concept for any detection/classification system, including ML-based detection</td></tr>
+<tr><td>Precision/recall tradeoff</td><td>General detection engineering and, more broadly, any classifier evaluation (including Tier 6/9's research methodology)</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
