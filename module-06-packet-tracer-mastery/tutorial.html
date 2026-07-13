@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 06 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 06 — Tutorial</h1>
+<p>Goal: everything you've done as text output in Modules 01-05 becomes
+something you build visually, on simulated real Cisco hardware, with
+real IOS syntax — and you get an objective, scriptable way to check
+whether you built it right.</p>
+
+<div class="note">
+<strong>What this module can and can't do for you.</strong> Cisco Packet
+Tracer is a licensed GUI application (free for anyone via a Cisco
+Networking Academy / Skills for All account) — it's not something this
+course can install, launch, or click through on your behalf. This module
+gives you exact, tested topology specs and real IOS command sequences to
+type yourself, plus <code>topology_validator.py</code>/<code>.js</code> —
+which ARE fully working, tested code — to check your results against.
+Nobody but you can verify the Packet Tracer side; the validator's job is
+to make that verification objective instead of "does it look right to me."
+</div>
+
+<h2>Step 0 — get Packet Tracer</h2>
+<p>Go to Cisco's Networking Academy site and sign up for a free
+<strong>Skills for All</strong> account, then enroll in the free
+"Getting Started with Cisco Packet Tracer" self-paced course — this gives
+you the download and license at no cost. This is the standard, legitimate
+path every CCNA student uses; there's no other officially supported way to
+obtain it.</p>
+
+<h2>Step 1 — Topology 1: two PCs, one switch</h2>
+<p>Follow <code>topology_configs/topology1_two_pcs_one_switch.md</code>
+exactly. No routing, no IOS config beyond IP addressing the PCs — this is
+Module 03's switch simulator made visual.</p>
+<div class="expect"><strong>Expected:</strong> <code>ping 192.168.1.20</code>
+from PC0 succeeds. Switch to Simulation mode, re-send the ping, and step
+through it packet-by-packet — you'll see the ARP broadcast flood, the
+unicast reply, then the actual ICMP exchange, exactly matching Module 03's
+<code>switch_sim.py</code> log output, just rendered as animated packets
+instead of print statements.</div>
+
+<h2>Step 2 — Topology 2: two LANs, one router hop</h2>
+<p>Follow <code>topology_configs/topology2_two_lans_one_hop.md</code>. Type
+every IOS command yourself rather than copy-pasting — the point is muscle
+memory, not just a working topology.</p>
+<pre>cd module-06-packet-tracer-mastery
+python topology_validator.py topology_configs/topology2_two_lans_one_hop.json</pre>
+<div class="expect"><strong>Expected:</strong> the validator's
+<code>show ip route</code> output for R1 and R2 should match your real
+Packet Tracer <code>show ip route</code> output line for line. If it
+doesn't, re-read the command reference's note on <code>no shutdown</code>
+first — it's the most common single mistake.</div>
+
+<h2>Step 3 — Topology 3: the Module 05 chain, rebuilt on real IOS</h2>
+<p>Follow <code>topology_configs/topology3_three_router_chain.md</code>.
+This is deliberately identical addressing to Module 05's
+<code>static_routing.py</code>.</p>
+<pre>python topology_validator.py topology_configs/topology3_three_router_chain.json</pre>
+<div class="expect"><strong>Expected:</strong> validator output matches
+your Packet Tracer <code>show ip route</code> AND matches Module 05's
+<code>static_routing.py</code> trace for the same source/destination pairs
+— three independent representations (pure-Python simulation, JSON-driven
+validator, real simulated Cisco IOS) of the same 3-router topology, all
+agreeing.</div>
+
+<h2>Step 4 — traceroute, for real</h2>
+<p>On PC-A's Command Prompt in Topology 3:</p>
+<pre>tracert 198.51.100.20</pre>
+<div class="expect"><strong>Expected:</strong> exactly 3 hops listed
+(R1, R2, R3's addresses) before reaching the destination — traceroute
+works by sending packets with increasing TTL and reporting whichever
+router's interface sends back the "TTL exceeded" message at each hop,
+which is also why the hop count you see here should exactly match the
+<code>hop 1/2/3</code> lines <code>topology_validator.py</code> printed.</div>
+
+<h2>Exercises before Module 07</h2>
+<ol>
+  <li><strong>Break something on purpose.</strong> In Topology 3, remove
+      R2's static route to <code>198.51.100.0/24</code>
+      (<code>no ip route 198.51.100.0 255.255.255.0 10.0.23.2</code>) and
+      re-run the ping from PC-A. Confirm it now fails, and use
+      <code>traceroute</code> to see exactly where it dies. Update
+      <code>topology3_three_router_chain.json</code> to remove the same
+      route and confirm the validator predicts the same failure point.</li>
+  <li><strong>Add a 4th topology of your own design.</strong> Using your
+      real home network's subnet (from Module 01) as inspiration, design a
+      small topology with 2 routers and 3 LANs that mirrors something like
+      your actual house's segmentation. Write its JSON file, build it in
+      Packet Tracer, and validate both.</li>
+  <li><strong>Convert Topology 2 to use RIP instead of static routes.</strong>
+      Replace the <code>ip route</code> commands with:
+      <pre>router rip
+ version 2
+ network 192.168.10.0
+ network 10.0.1.0</pre>
+      (equivalent commands on R2 for its own networks). Confirm
+      <code>show ip route</code> now shows a <code>R</code> code instead of
+      <code>S</code> for the remote network, and connect this back to
+      Module 05's distance-vector simulation — you're now looking at real
+      RIP-learned routes instead of Bellman-Ford math on paper.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 07:</strong> you should be comfortable typing IOS
+interface and static-route configuration from memory, and confident reading
+<code>show ip route</code> output well enough to predict a ping's path
+before running it. Module 07 goes back down to the Transport layer you
+briefly touched in Module 02 — this time building real client/server socket
+programs and watching TCP's actual state machine (not just the 3-way
+handshake) play out.
+</div>
+
+</body>
+</html>

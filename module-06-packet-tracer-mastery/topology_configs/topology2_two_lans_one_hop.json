@@ -1,0 +1,31 @@
+{
+  "description": "Two LANs connected via a single point-to-point hop between R1 and R2. Matches topology_configs/topology2_two_lans_one_hop.md's build instructions exactly -- build this in Packet Tracer, then run: python topology_validator.py topology_configs/topology2_two_lans_one_hop.json",
+  "routers": {
+    "R1": {
+      "interfaces": {
+        "GigabitEthernet0/0": "192.168.10.1/24",
+        "GigabitEthernet0/1": "10.0.1.1/30"
+      },
+      "static_routes": [
+        { "network": "192.168.20.0/24", "next_hop": "10.0.1.2" }
+      ]
+    },
+    "R2": {
+      "interfaces": {
+        "GigabitEthernet0/0": "10.0.1.2/30",
+        "GigabitEthernet0/1": "192.168.20.1/24"
+      },
+      "static_routes": [
+        { "network": "192.168.10.0/24", "next_hop": "10.0.1.1" }
+      ]
+    }
+  },
+  "hosts": {
+    "PC-A": { "ip": "192.168.10.10/24", "gateway": "192.168.10.1" },
+    "PC-B": { "ip": "192.168.20.10/24", "gateway": "192.168.20.1" }
+  },
+  "pings_to_test": [
+    { "from": "PC-A", "to": "192.168.20.10" },
+    { "from": "PC-B", "to": "192.168.10.10" }
+  ]
+}

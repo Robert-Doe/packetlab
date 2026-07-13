@@ -1,0 +1,42 @@
+{
+  "description": "The exact 3-router chain from Module 05's static_routing.py (R1-R2-R3), rebuilt in Packet Tracer with real (simulated) Cisco IOS. Run: python topology_validator.py topology_configs/topology3_three_router_chain.json -- and compare its output line-by-line to Module 05's trace_packet() output.",
+  "routers": {
+    "R1": {
+      "interfaces": {
+        "GigabitEthernet0/0": "192.0.2.1/24",
+        "GigabitEthernet0/1": "10.0.12.1/30"
+      },
+      "static_routes": [
+        { "network": "198.51.100.0/24", "next_hop": "10.0.12.2" },
+        { "network": "0.0.0.0/0", "next_hop": "203.0.113.1" }
+      ]
+    },
+    "R2": {
+      "interfaces": {
+        "GigabitEthernet0/0": "10.0.12.2/30",
+        "GigabitEthernet0/1": "10.0.23.1/30"
+      },
+      "static_routes": [
+        { "network": "192.0.2.0/24", "next_hop": "10.0.12.1" },
+        { "network": "198.51.100.0/24", "next_hop": "10.0.23.2" }
+      ]
+    },
+    "R3": {
+      "interfaces": {
+        "GigabitEthernet0/0": "10.0.23.2/30",
+        "GigabitEthernet0/1": "198.51.100.1/24"
+      },
+      "static_routes": [
+        { "network": "192.0.2.0/24", "next_hop": "10.0.23.1" }
+      ]
+    }
+  },
+  "hosts": {
+    "PC-A": { "ip": "192.0.2.10/24", "gateway": "192.0.2.1" },
+    "Server": { "ip": "198.51.100.20/24", "gateway": "198.51.100.1" }
+  },
+  "pings_to_test": [
+    { "from": "PC-A", "to": "198.51.100.20" },
+    { "from": "Server", "to": "192.0.2.10" }
+  ]
+}

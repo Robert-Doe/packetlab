@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 06 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 06 — Deep Theory: Cisco IOS Commands, Explained From Zero</h1>
+
+<h2>1. Why IOS Has "Modes" At All</h2>
+<p>Cisco IOS's mode structure (User EXEC → Privileged EXEC → Global
+Config → Interface Config, from <code>ios_command_reference.html</code>)
+exists to prevent catastrophic mistakes through STRUCTURE, not just
+convention. User EXEC mode (<code>Router&gt;</code>) can only run
+harmless, read-only commands — you cannot accidentally reconfigure a
+production router just by connecting to it. <code>enable</code> requires
+an explicit, deliberate step (often password-protected on real hardware)
+to reach Privileged EXEC (<code>Router#</code>), which unlocks
+configuration commands. This graduated-privilege structure is a genuine
+security/safety design decision, not an arbitrary CLI quirk — it's
+analogous to why Module 00c's systemd work distinguished user-level from
+root-level operations.</p>
+
+<h2>2. Command-by-Command: The Configuration Sequence</h2>
+
+<h3><code>interface GigabitEthernet0/0</code></h3>
+<p><strong>What it does:</strong> moves you from Global Config mode into
+Interface Config mode FOR THIS SPECIFIC INTERFACE — every command you
+type next applies only to this one interface until you <code>exit</code>
+or move to a different interface. <code>GigabitEthernet0/0</code>'s
+naming follows a real Cisco convention: interface TYPE (GigabitEthernet),
+then slot/port numbering (<code>0/0</code> means slot 0, port 0 — on
+real modular hardware, a router can have multiple physical interface
+cards, or "slots," each with multiple ports).</p>
+
+<h3><code>ip address 192.168.10.1 255.255.255.0</code></h3>
+<p><strong>What it does:</strong> assigns an IP address AND its subnet
+mask to the interface you just entered configuration mode for. Notice
+IOS wants the mask in DOTTED-DECIMAL form here (<code>255.255.255.0</code>),
+not CIDR (<code>/24</code>) — a genuine, unavoidable syntax quirk of real
+IOS <code>ip address</code>/<code>ip route</code> commands specifically
+(other parts of IOS DO accept CIDR notation, making this an inconsistency
+worth simply memorizing rather than reasoning your way to).</p>
+
+<h3><code>no shutdown</code></h3>
+<p><strong>What it does, and why it's needed at all:</strong> every
+interface on a Cisco device starts ADMINISTRATIVELY DOWN by default — a
+deliberate safety default meaning "don't do anything on this interface
+until a human explicitly says to." <code>shutdown</code> is the command
+that puts an interface down; <code>no shutdown</code> is IOS's general
+pattern for negating/reversing a command (<code>no</code> prefixed to
+almost any config command undoes it) — so <code>no shutdown</code>
+literally means "undo the shutdown state," bringing the interface up.
+Forgetting this single command is, by a wide margin, the most common
+reason a freshly-configured Packet Tracer interface mysteriously doesn't
+work at all, with no error message given.</p>
+
+<h3><code>ip route 198.51.100.0 255.255.255.0 10.0.12.2</code></h3>
+<p><strong>What it does:</strong> adds a static route to the router's
+routing table — "to reach network 198.51.100.0/24, send packets to next-hop
+10.0.12.2." This is the exact same conceptual operation Module 05's
+<code>Router.add_static_route()</code> performs in pure Python, just
+expressed in real IOS command syntax instead of a Python method call.</p>
+
+<h3><code>router rip</code> / <code>version 2</code> / <code>network 192.168.10.0</code></h3>
+<p><strong>What this sequence does:</strong> <code>router rip</code>
+enters RIP configuration mode (a specialized config sub-mode, similar
+in spirit to interface config mode but for routing protocol settings).
+<code>version 2</code> selects RIPv2 over the older RIPv1 (RIPv2 added
+support for CIDR/VLSM — RIPv1 assumed classful addressing and would
+badly mishandle a VLSM-designed network like this course's own). Each
+<code>network</code> statement tells RIP which of the router's OWN
+directly-connected networks to advertise to neighbors — this is real
+Bellman-Ford/distance-vector advertisement, the exact mechanism Module
+05's <code>routing_protocols_sim.py</code> modeled in Python, now
+actually running as a live protocol between real (simulated) routers.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "After configuring RIP,
+show ip route displays a route with an 'R' code instead of 'S'. What
+does this letter change actually indicate operationally, beyond just how
+the route was entered?" An 'R' (RIP-learned) route, unlike an 'S' (static)
+route, is DYNAMIC — if the underlying link or router providing that route
+fails, RIP's own convergence process (Module 05's count-to-infinity /
+split-horizon territory) will eventually detect this and remove or update
+the route automatically. A static route has no such self-healing behavior
+— it stays in the table exactly as configured, even pointing at a
+next-hop that's no longer reachable, until a human manually changes it.
+</div>
+
+<h2>3. Traceroute in Packet Tracer, Mechanically Identical to Real Traceroute</h2>
+<p>Step 4's <code>tracert</code> inside Packet Tracer uses the EXACT same
+TTL-exhaustion mechanism Module 01's deep theory covered for real
+traceroute — Packet Tracer's simulated IOS genuinely implements this
+correctly, which is why the hop count matches
+<code>topology_validator.py</code>'s trace exactly: both are reasoning
+about the identical underlying mechanism (successively-expiring TTL
+values revealing each router along the path), just observed through
+different tools.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>IOS mode structure (privilege graduation)</td><td>Module 09's real pfSense/OPNsense admin interface, similarly privilege-graduated</td></tr>
+<tr><td>no shutdown / administratively-down default</td><td>General "safe by default" design pattern seen throughout networking hardware</td></tr>
+<tr><td>Real RIP configuration</td><td>Direct hands-on confirmation of Module 05's Bellman-Ford theory</td></tr>
+<tr><td>show ip route's route-source codes (S/R/O/C)</td><td>Module 09's real router table, general operational routing literacy</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 06 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 06 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to
+navigate IOS's CLI mode hierarchy without hesitation, explain precisely
+why <code>no shutdown</code> is needed at all, read any
+<code>show ip route</code> output's route-code prefixes fluently, and
+explain the volatile/non-volatile memory distinction behind
+<code>write memory</code>.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">The IOS CLI mode hierarchy, and why it's structured this way</a></li>
+<li><a href="#sec2">Interface administrative state — why no shutdown exists at all</a></li>
+<li><a href="#sec3">show ip route's route codes, fully decoded</a></li>
+<li><a href="#sec4">running-config vs. startup-config — the memory model behind it</a></li>
+<li><a href="#sec5">Why IOS uses dotted-decimal masks, not CIDR, in ip route commands</a></li>
+<li><a href="#sec6">Full code walkthrough — topology_validator.py's trace_ping()</a></li>
+<li><a href="#sec7">Many worked scenarios — predicting show ip route before you type it</a></li>
+<li><a href="#sec8">Why this module's validator matters as an "answer key" methodology</a></li>
+<li><a href="#sec9">Troubleshooting scenarios you will actually hit in Packet Tracer</a></li>
+<li><a href="#sec10">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. The IOS CLI Mode Hierarchy, And Why It's Structured This Way</h2>
+
+<table>
+<tr><th>Prompt</th><th>Mode</th><th>What you can do here</th></tr>
+<tr><td><code>Router&gt;</code></td><td>User EXEC</td><td>Very limited — basic monitoring commands only (like <code>ping</code>). Cannot view or change configuration.</td></tr>
+<tr><td><code>Router#</code></td><td>Privileged EXEC</td><td>Full visibility (<code>show</code> commands, <code>ping</code>, <code>traceroute</code>) — but still cannot CHANGE configuration directly from here.</td></tr>
+<tr><td><code>Router(config)#</code></td><td>Global configuration</td><td>Change device-wide settings — hostname, routing protocols, static routes.</td></tr>
+<tr><td><code>Router(config-if)#</code></td><td>Interface configuration</td><td>Change settings for ONE SPECIFIC interface only — IP address, shutdown state.</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does IOS require this specific hierarchy — separate
+"privileged" and "configuration" levels — rather than one flat command
+set?</strong> This is a genuine, deliberate SECURITY/SAFETY design: User
+EXEC mode is safe to hand to almost anyone (it can't break anything).
+Privileged EXEC requires a password (in real deployments — Packet
+Tracer's default labs often skip this for simplicity) specifically
+because it reveals sensitive configuration DETAILS even though it still
+can't CHANGE anything. Configuration mode requires an ADDITIONAL,
+deliberate step (<code>configure terminal</code>) beyond just having
+privileged access, specifically so that VIEWING a device's state and
+MODIFYING a device's state are never accidentally conflated — you cannot
+accidentally type a configuration-changing command while merely trying
+to look something up, because you're simply not IN a mode that would
+accept it. This same "look but don't accidentally touch" principle
+recurs throughout real systems administration (Module 00c's discussion
+of privilege separation is the exact same underlying idea, applied to a
+different context).
+</div>
+
+<div class="scenario">
+<h4>Scenario: why interface configuration is its OWN nested mode, rather than a single global command</h4>
+<p>A router has MULTIPLE interfaces, each needing independent
+configuration (a different IP address, a different up/down state). If
+IOS instead used single flat commands like
+<code>set-interface-ip GigabitEthernet0/0 192.168.10.1</code>, every
+single interface-related command would need to repeat the interface
+name as an argument, every time, for every setting. Instead, IOS lets
+you "ENTER" a specific interface's own configuration CONTEXT
+(<code>interface GigabitEthernet0/0</code>) once, and every subsequent
+command until you <code>exit</code> applies to THAT interface implicitly
+— a real usability design choice that reduces repetition and reduces
+the chance of accidentally configuring the WRONG interface by mistyping
+its name on every single line.</p>
+</div>
+
+<h2 id="sec2">2. Interface Administrative State — Why "no shutdown" Exists At All</h2>
+
+<p>Every interface on a Cisco router starts in an ADMINISTRATIVELY DOWN
+state by default — this is deliberate, not an oversight, and understanding
+WHY reveals a real, important networking concept: an interface's status
+is actually TWO SEPARATE, independent flags, not one.</p>
+
+<table>
+<tr><th>Status</th><th>Meaning</th></tr>
+<tr><td>Administrative state</td><td>Whether a HUMAN (or configuration) has explicitly enabled this interface — controlled directly by <code>shutdown</code> / <code>no shutdown</code>. This is a pure CONFIGURATION decision, unrelated to whether anything is even physically plugged in.</td></tr>
+<tr><td>Line protocol state</td><td>Whether the interface is ACTUALLY functioning at the physical/data-link level right now — is a cable plugged in, is the other end also up, is there a working electrical/optical signal. This can be down even if administratively up (e.g., an unplugged cable).</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does a factory-default interface start administratively
+DOWN, requiring an explicit "no shutdown" to activate it?</strong> This
+is a genuine, deliberate SAFETY default: a newly-installed or
+newly-configured device should not automatically start passing traffic
+on an interface a human hasn't yet DELIBERATELY reviewed and enabled —
+this prevents a half-configured interface (wrong IP, wrong VLAN,
+whatever) from silently becoming active and potentially causing problems
+on a real network before its configuration is actually complete and
+intentional. Forgetting this single step is, exactly as this module's
+own IOS command reference states, "the single most forgotten command in
+every first Packet Tracer lab ever built" — precisely because its
+EFFECT (a ping silently failing with no obviously diagnostic error) gives
+almost no hint that THIS specific, easy-to-forget step is the actual
+cause.
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "A student configures an
+interface's IP address correctly, plugs in the correct cable, but pings
+through it still fail with no useful error message. What is the single
+most likely cause, and how would you confirm it?" The single most likely
+cause is a missing <code>no shutdown</code> — the interface is
+administratively down regardless of correct IP configuration or physical
+cabling. Confirm via <code>show ip interface brief</code>, which
+displays BOTH the administrative and line-protocol status columns
+side by side — an interface showing <code>administratively down</code>
+in that first status column, despite correct IP configuration, is the
+unambiguous, immediate diagnostic signal.
+</div>
+
+<h2 id="sec3">3. show ip route's Route Codes, Fully Decoded</h2>
+
+<table>
+<tr><th>Code</th><th>Meaning</th><th>How the router learned it</th></tr>
+<tr><td><code>C</code></td><td>Connected</td><td>An interface on this router has an IP address on this network — Module 05 Section 2's "connected route" concept, seen exactly as real IOS displays it</td></tr>
+<tr><td><code>S</code></td><td>Static</td><td>A human explicitly configured this route via <code>ip route</code> — Module 05 Section 2's "static route" concept</td></tr>
+<tr><td><code>R</code></td><td>RIP</td><td>Learned dynamically via the RIP protocol — Module 05's <code>DVRouter</code> simulation, now happening for real (this module's own Exercise 3 walks you through converting a topology to use this)</td></tr>
+<tr><td><code>O</code></td><td>OSPF</td><td>Learned dynamically via OSPF — Module 05's Dijkstra/link-state simulation, running for real</td></tr>
+<tr><td><code>S*</code></td><td>Static default route</td><td>Specifically a static route to <code>0.0.0.0/0</code> — the asterisk flags it as the CANDIDATE DEFAULT route specifically</td></tr>
+</table>
+
+<div class="scenario">
+<h4>Worked scenario: predicting show ip route's exact output for R1 in Topology 3, before ever opening Packet Tracer</h4>
+<p>Using this module's own <code>topology_validator.py</code> logic
+(Section 6) against Topology 3's real configuration (matching Module 05's
+addressing exactly):</p>
+<pre>R1# show ip route
+C    192.0.2.0/24 is directly connected, GigabitEthernet0/0
+C    10.0.12.0/30 is directly connected, GigabitEthernet0/1
+S    198.51.100.0/24 [1/0] via 10.0.12.2
+S*   0.0.0.0/0 [1/0] via 203.0.113.1</pre>
+<p>Every line here should be predictable BEFORE you type
+<code>show ip route</code> for real, purely from knowing what interfaces
+and static routes you configured — this module's validator exists
+specifically so you can check this prediction objectively rather than
+just eyeballing whether Packet Tracer's real output "looks about right."</p>
+</div>
+
+<div class="brain">
+<strong>Brain power:</strong> what does the <code>[1/0]</code> notation
+after a static route mean? The first number is ADMINISTRATIVE DISTANCE
+— a measure of how TRUSTWORTHY this route's SOURCE is considered,
+relative to other possible sources for the same destination (a static
+route's default administrative distance is 1, considered highly
+trustworthy — more trustworthy than most dynamic routing protocols,
+which is WHY a manually-configured static route, if one exists,
+typically overrides a dynamically-learned route to the same destination
+unless explicitly configured otherwise). The second number (0 for static
+routes) is the route's METRIC — its own protocol-specific "cost" value
+(for RIP, this would be the hop count from Module 05's own
+<code>DVRouter</code> metric field; static routes simply don't have a
+meaningful metric of their own, hence 0).
+</div>
+
+<h2 id="sec4">4. running-config vs. startup-config — The Memory Model Behind It</h2>
+
+<p>Every IOS device has (at minimum) TWO separate stored configurations,
+and understanding the memory technology behind each is genuinely
+important, not just terminology to memorize.</p>
+
+<table>
+<tr><th>Configuration</th><th>Stored in</th><th>Behavior</th></tr>
+<tr><td><code>running-config</code></td><td>RAM (volatile memory)</td><td>The device's CURRENT, ACTIVE configuration — every command you type takes effect here immediately. LOST completely on power loss or reboot, because RAM's contents don't survive without continuous power.</td></tr>
+<tr><td><code>startup-config</code></td><td>NVRAM (non-volatile RAM)</td><td>What the device loads INTO running-config automatically at boot/power-on. Survives power loss, because NVRAM retains its contents without continuous power (the same category of technology as an SSD, conceptually — persistent storage, unlike ordinary RAM).</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does <code>write memory</code> (copying running-config INTO
+startup-config) need to be a SEPARATE, explicit step, rather than every
+configuration change automatically persisting?</strong> This is a
+genuinely deliberate safety design, directly parallel to Module 00c's
+<code>systemctl daemon-reload</code> distinction (changes to a running
+system and changes to what persists across a restart being deliberately
+separate concerns): it lets you EXPERIMENT with configuration changes —
+test a new static route, try a different interface setting — with the
+SAFETY NET that a simple reboot (power cycle) reverts everything back to
+the last explicitly SAVED, known-good configuration, if your experiment
+went wrong. Without this separation, every fumbled command would be
+immediately and permanently committed, with no easy "undo" via a simple
+restart.
+</div>
+
+<h2 id="sec5">5. Why IOS Uses Dotted-Decimal Masks, Not CIDR, In ip route Commands</h2>
+
+<p><code>ip route 198.51.100.0 255.255.255.0 10.0.12.2</code> requires
+the mask spelled out in full dotted-decimal form — Module 04's
+<code>subnet_calc.py</code> CLI, by contrast, accepts CIDR notation
+(<code>198.51.100.0/24</code>) directly. Both notations encode IDENTICAL
+information (Module 04 Section 1) — this is purely a SYNTAX/HISTORICAL
+difference, not a functional one: Cisco IOS's command syntax predates
+CIDR notation's widespread adoption as the default convention, and IOS
+has, for historical/compatibility reasons, never switched its core
+<code>ip route</code> syntax to accept the shorter slash notation
+directly (though some newer IOS features and OTHER vendors' CLIs DO
+accept CIDR notation directly) — a genuinely real, practical gotcha
+worth knowing before you're staring at an IOS prompt expecting
+<code>/24</code> to work and getting a syntax error instead.</p>
+
+<h2 id="sec6">6. Full Code Walkthrough — topology_validator.py's trace_ping()</h2>
+
+<pre>gateway_ip = host_gateway[src_host]
+current = ip_owner[gateway_ip]</pre>
+<p>This models something genuinely important, distinct from Module 05's
+own router-to-router trace: a PING STARTS AT A HOST (a PC), not a
+router — and a host's very FIRST routing decision is always "send it to
+my default gateway" (a host typically has no routing table of its own
+beyond this single rule, unlike a router). <code>host_gateway[src_host]</code>
+looks up which gateway IP this specific host is configured to use, and
+<code>ip_owner[gateway_ip]</code> translates that gateway IP into WHICH
+router actually owns it — the trace then proceeds exactly like Module
+05's own router-to-router trace, just starting from this host's
+perspective rather than beginning directly at a router.</p>
+
+<pre>approx_rtt_ms = hop_count * 1
+print(f"  Reply from {dest_ip}: bytes=32 time&lt;{approx_rtt_ms + 1}ms TTL={64 - hop_count}")</pre>
+<p>Notice <code>TTL={64 - hop_count}</code> — this directly reuses
+Module 01 Section 8.4's TTL-decrement mechanism: the REPLYING host's OS
+typically starts a fresh ICMP reply with a TTL of 64 (a common OS
+default), and EACH router hop along the reply's OWN return path
+decrements it by one — so the TTL value YOU observe in a ping reply
+tells you, indirectly, how many hops the REPLY traveled to reach you
+(assuming a symmetric path, an assumption worth being aware of, though
+not always true on real, more complex networks).</p>
+
+<h2 id="sec7">7. Many Worked Scenarios — Predicting show ip route Before You Type It</h2>
+
+<div class="scenario">
+<h4>Scenario: Topology 2 (two LANs, one router hop) — predict R1's full routing table</h4>
+<p>Given: R1 has interfaces on <code>192.168.10.0/24</code> (connected
+to PC0's LAN) and <code>10.0.1.0/30</code> (the link to R2); R2 has
+<code>10.0.1.0/30</code> and <code>192.168.20.0/24</code> (PC1's LAN); a
+static route on R1 sends <code>192.168.20.0/24</code> traffic via R2's
+<code>10.0.1.2</code> address.</p>
+<pre>R1# show ip route
+C    192.168.10.0/24 is directly connected, GigabitEthernet0/0
+C    10.0.1.0/30 is directly connected, GigabitEthernet0/1
+S    192.168.20.0/24 [1/0] via 10.0.1.2</pre>
+<p>Try predicting R2's table yourself, by the same reasoning, before
+checking it against <code>topology_validator.py</code>'s real output —
+this is exactly the self-testing discipline this module's validator
+exists to support.</p>
+</div>
+
+<h2 id="sec8">8. Why This Module's Validator Matters As An "Answer Key" Methodology</h2>
+
+<div class="why">
+<strong>Why does this course build a SEPARATE Python/JS validator rather
+than just trusting your own Packet Tracer output directly?</strong>
+Because a licensed GUI application (Packet Tracer) is fundamentally
+UNVERIFIABLE by this course's own automated testing (DECISIONS.md is
+explicit about this) — there's no way for this course to confirm your
+specific build is correct except by giving you an INDEPENDENT,
+objectively-computed prediction to compare against. This mirrors a real,
+important professional practice: in real network engineering, having an
+INDEPENDENT way to predict/verify expected behavior (a second,
+independently-derived source of truth) before deploying a change to
+production is exactly how experienced engineers catch configuration
+mistakes BEFORE they cause an outage, rather than discovering them only
+when something breaks.
+</div>
+
+<h2 id="sec9">9. Troubleshooting Scenarios You Will Actually Hit In Packet Tracer</h2>
+
+<div class="scenario">
+<h4>Scenario: your ping fails, but show ip interface brief shows every interface "up/up"</h4>
+<p>If interfaces are genuinely up and addressed correctly, the next most
+likely cause is a MISSING or INCORRECT static route (or default route)
+somewhere along the path — re-derive, by hand, what
+<code>topology_validator.py</code> would predict for the SPECIFIC
+router where you suspect the failure, and compare its predicted
+<code>show ip route</code> against your actual Packet Tracer output,
+line by line, looking specifically for a route that's missing entirely
+or points to the wrong next hop.</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: PC0's Command Prompt shows "Request timed out" but ping succeeds from the router CLI itself</h4>
+<p>This is a genuinely useful diagnostic distinction: a successful ping
+FROM the router (using the router's OWN interface as the source) but a
+failed ping FROM the PC suggests the problem is specifically in the PC's
+OWN configuration — most commonly, an incorrectly configured default
+gateway on the PC itself (check the PC's IP Configuration tab), NOT a
+router-side routing problem. Isolating WHERE in the path a failure
+originates, exactly like Module 01 Section 8.3's progressive
+"ping the gateway, then ping further" diagnostic technique, is the
+correct systematic approach rather than guessing.</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: you saved with write memory, closed Packet Tracer, reopened the file, and your configuration is gone</h4>
+<p>Recall Section 4's distinction carefully: <code>write memory</code>
+only protects against a SIMULATED power cycle/reboot WITHIN Packet
+Tracer's own simulation — but Packet Tracer's own SAVE FILE (the
+<code>.pkt</code> file itself) captures the running-config's state
+regardless. If your configuration is genuinely lost after reopening, the
+most likely cause is that the <code>.pkt</code> file itself was never
+saved (File → Save in Packet Tracer's own application menu, a completely
+separate action from any IOS-level command) — <code>write memory</code>
+operates entirely WITHIN the simulated device; saving the actual lab
+file is a separate, application-level action.</p>
+</div>
+
+<h2 id="sec10">10. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 07, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Navigate all four IOS CLI modes without hesitation, and explain WHY
+the hierarchy exists as a safety/usability design, not just memorized
+syntax.</li>
+<li>Explain the two SEPARATE interface status flags (administrative,
+line protocol) and why "no shutdown" is required by default.</li>
+<li>Decode any <code>show ip route</code> line, including its route code
+letter and <code>[AD/metric]</code> notation.</li>
+<li>Explain the running-config/startup-config volatile/non-volatile
+memory distinction and why <code>write memory</code> is a deliberate,
+separate step.</li>
+<li>Predict a router's complete <code>show ip route</code> output from
+its interface and static route configuration alone, before ever running
+<code>topology_validator.py</code> or opening Packet Tracer.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 07 returns to the Transport layer, and assumes
+you're now completely comfortable reading and predicting routing
+behavior as a given, unremarkable skill, not something to re-derive.</p>
+
+</body>
+</html>

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cisco IOS Command Reference — Module 06</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 24px; }
+  td, th { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; font-size: 0.92rem; }
+  th { background: #f4f4f4; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 10px 14px; border-radius: 6px; overflow-x: auto; margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>Cisco IOS Command Reference</h1>
+<p>Every command used across this module's three topologies, grouped by
+what it does. Packet Tracer's simulated IOS accepts all of these exactly
+as a real router/switch would (this is genuinely one of Packet Tracer's
+core selling points — it's not a fake CLI, it's a real, if reduced,
+IOS command parser).</p>
+
+<h2>Mode navigation — you must move through these in order</h2>
+<table>
+<tr><th>Prompt looks like</th><th>Mode</th><th>How you get here</th></tr>
+<tr><td><code>Router&gt;</code></td><td>User EXEC</td><td>default, after opening the CLI tab</td></tr>
+<tr><td><code>Router#</code></td><td>Privileged EXEC</td><td><code>enable</code></td></tr>
+<tr><td><code>Router(config)#</code></td><td>Global config</td><td><code>configure terminal</code></td></tr>
+<tr><td><code>Router(config-if)#</code></td><td>Interface config</td><td><code>interface GigabitEthernet0/0</code></td></tr>
+</table>
+<p><code>exit</code> goes up one level; <code>end</code> jumps straight back
+to Privileged EXEC from anywhere.</p>
+
+<h2>Interface configuration</h2>
+<pre>interface GigabitEthernet0/0
+ ip address 192.168.10.1 255.255.255.0
+ no shutdown</pre>
+<p><code>no shutdown</code> is the single most forgotten command in every
+first Packet Tracer lab ever built. Every interface starts
+administratively down — it stays down, and pings through it will fail with
+no useful error, until you explicitly bring it up.</p>
+
+<h2>Static routing</h2>
+<pre>ip route &lt;destination-network&gt; &lt;subnet-mask&gt; &lt;next-hop-ip&gt;
+ip route 198.51.100.0 255.255.255.0 10.0.12.2
+ip route 0.0.0.0 0.0.0.0 203.0.113.1     ! default route</pre>
+<p>Note IOS wants the subnet mask in dotted-decimal (<code>255.255.255.0</code>),
+not CIDR (<code>/24</code>) — the opposite convention from
+<code>subnet_calc.py</code>'s CLI in Module 04. Both represent identical
+information; only the notation differs.</p>
+
+<h2>Verification commands (run these constantly)</h2>
+<table>
+<tr><th>Command</th><th>What it shows</th></tr>
+<tr><td><code>show ip route</code></td><td>The full routing table — connected (<code>C</code>) and static (<code>S</code>) routes, exactly what <code>topology_validator.py</code> predicts.</td></tr>
+<tr><td><code>show ip interface brief</code></td><td>Every interface's IP and up/down status in one table — the fastest way to spot a forgotten <code>no shutdown</code>.</td></tr>
+<tr><td><code>show mac address-table</code></td><td>(On a switch) the CAM table Module 03's <code>switch_sim.py</code> built in software — now populated by real (simulated) traffic.</td></tr>
+<tr><td><code>show arp</code></td><td>The router's ARP cache — same concept as Module 01's dashboard and Module 03's ARP exchange, seen on IOS.</td></tr>
+<tr><td><code>show running-config</code></td><td>The device's complete current configuration.</td></tr>
+</table>
+
+<h2>Testing connectivity</h2>
+<pre>ping 198.51.100.20
+traceroute 198.51.100.20</pre>
+<p>From a PC's Command Prompt (not the router CLI), the equivalent
+Windows-style commands are available: <code>ping</code> and
+<code>tracert</code>.</p>
+
+<h2>Saving your configuration</h2>
+<pre>write memory
+! or the older, equivalent form:
+copy running-config startup-config</pre>
+<p>Packet Tracer does NOT auto-save router configs into the running
+simulation the way it auto-saves the topology layout itself. If you close
+and reopen the file without having run this, your typed IOS commands
+survive (they're part of the saved .pkt device state) — but on a real
+router, skipping this step means a power cycle wipes your configuration
+entirely. Build the habit now.</p>
+
+</body>
+</html>
