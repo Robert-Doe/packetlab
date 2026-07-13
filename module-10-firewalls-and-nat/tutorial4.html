@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 10 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 10 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end you should be able to trace
+PAT's exact port-disambiguation mechanism, explain precisely why a
+stateful firewall checks the FULL connection tuple (not just port
+number), map every scenario to its real iptables chain, and explain port
+forwarding as exactly what it is: a manually pre-created exception to
+the default-drop rule.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">PAT, traced completely — how one IP serves an entire household</a></li>
+<li><a href="#sec2">The connection tuple — why source IP matters, not just port</a></li>
+<li><a href="#sec3">Stateful connection tracking — NEW, ESTABLISHED, RELATED</a></li>
+<li><a href="#sec4">The five iptables chains, and where each scenario actually runs</a></li>
+<li><a href="#sec5">Port forwarding — a deliberate, manual exception, precisely explained</a></li>
+<li><a href="#sec6">Port exhaustion — the real math behind a real limit</a></li>
+<li><a href="#sec7">Full code walkthrough — nat_firewall_sim.py</a></li>
+<li><a href="#sec8">Many worked scenarios — predicting ALLOW/DROP before running the code</a></li>
+<li><a href="#sec9">Troubleshooting and common confusions</a></li>
+<li><a href="#sec10">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. PAT, Traced Completely — How One IP Serves An Entire Household</h2>
+
+<p>PAT (Port Address Translation, the specific form of NAT your home
+router actually performs) solves a real, concrete problem: your ISP
+gives you exactly ONE public IP address, but every device in your house
+(and every separate connection each device opens — a browser alone
+opens dozens simultaneously) needs to be individually distinguishable so
+REPLIES get routed back to the correct device.</p>
+
+<div class="scenario">
+<h4>Worked scenario: two laptops both using the SAME internal port, traced through PAT completely</h4>
+<pre>Laptop A (192.168.1.10) opens a connection FROM its own port 51000
+  TO a web server (93.184.216.34:443).
+Laptop B (192.168.1.20) ALSO opens a connection FROM its own port 51000
+  (a coincidence -- operating systems often assign similar ephemeral
+  ports independently) TO THE SAME web server.
+
+Both connections LOOK identical from the internal side: source port
+51000 in both cases. Without PAT, the router would have NO way to tell
+these two conversations apart once both got translated to the same
+public IP.
+
+PAT's fix: assign a DIFFERENT EXTERNAL port to each internal
+(ip, port) pair, regardless of what the INTERNAL port happened to be:
+  (192.168.1.10, 51000) -> external port 40000
+  (192.168.1.20, 51000) -> external port 40001
+
+Both connections now leave your router with the SAME external IP
+(203.0.113.7) but DIFFERENT external ports -- disambiguation happens
+ENTIRELY via the external port number, which is exactly why
+nat_firewall_sim.py's own next_external_port counter increments by 1
+for every NEW internal (ip, port) pair it hasn't seen before.
+
+When a reply arrives addressed to 203.0.113.7:40000, the router's
+REVERSE NAT TABLE (reverse_nat in this module's own code) looks up
+EXACTLY which internal host that specific external port belongs to,
+and routes the reply to 192.168.1.10 specifically -- never to
+192.168.1.20, despite both having used the identical internal port
+originally.</pre>
+</div>
+
+<div class="why">
+<strong>Why is it called PORT Address Translation specifically, rather
+than just "NAT"?</strong> Plain NAT (in its original, historical sense)
+referred to translating IP ADDRESSES ALONE — a one-to-one mapping
+between one internal address and one external address, which would
+require as many public IPs as internal hosts (defeating the entire
+purpose of address conservation). PAT specifically adds the PORT NUMBER
+as an additional disambiguating dimension, letting MANY internal hosts
+share ONE single external IP simultaneously — this is precisely why your
+home network, with potentially dozens of devices, needs only the single
+public IP Cox assigns you, and it's the PORT field doing the actual
+disambiguation work, not the IP address.
+</div>
+
+<h2 id="sec2">2. The Connection Tuple — Why Source IP Matters, Not Just Port</h2>
+
+<p>Scenario 4 (an inbound packet reusing external port 40000, but from a
+COMPLETELY DIFFERENT source than the legitimate reply) is the single
+most conceptually important scenario in this module — it demonstrates
+that a stateful firewall's decision is NOT simply "is this port
+currently open in my NAT table."</p>
+
+<div class="scenario">
+<h4>Precisely why Scenario 4 gets dropped, traced through the actual code logic</h4>
+<pre>Legitimate reply (Scenario 2): src=93.184.216.34:443, dest=203.0.113.7:40000
+  conn_key checked: (192.168.1.10, 51000, 93.184.216.34, 443)
+  This EXACT tuple was marked ESTABLISHED during the original outbound
+  call -- match found -- ALLOWED.
+
+Spoofed/unrelated packet (Scenario 4): src=198.51.100.99:9999, dest=203.0.71.7:40000
+  Same DESTINATION port (40000) as the legitimate entry.
+  reverse_nat correctly resolves dest port 40000 -> (192.168.1.10, 51000)
+  conn_key checked: (192.168.1.10, 51000, 198.51.100.99, 9999)
+  -- THIS EXACT TUPLE was NEVER marked ESTABLISHED (the original outbound
+  connection was to 93.184.216.34:443, a COMPLETELY DIFFERENT source) --
+  no match -- DROPPED.</pre>
+<p>The firewall's ESTABLISHED check isn't "is external port 40000
+currently assigned to somebody" — it's "does THIS SPECIFIC
+(internal_ip, internal_port, remote_ip, remote_port) FOUR-TUPLE
+match an outbound connection I actually recorded." Reusing a real,
+active external port number is NOT sufficient to be treated as
+legitimate return traffic — the REMOTE side's identity must also match
+exactly.</p>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why is checking only 'is
+this destination port currently mapped in the NAT table' insufficient
+for a secure stateful firewall — what specific attack does the full
+4-tuple check prevent?" Checking port-mapping existence ALONE would let
+ANY external host send traffic to a currently-active external port and
+have it accepted as if it were the legitimate remote party — an
+attacker who somehow learned (or guessed) that port 40000 was active
+could inject traffic claiming to be a reply, even though they were never
+actually part of the original conversation. This is a real category of
+attack (broadly, connection/session hijacking via prediction or
+observation) that the FULL 4-tuple check specifically defeats: even
+knowing the correct external port, an attacker's packets are only
+accepted if they ALSO match the exact remote IP and port the ORIGINAL
+outbound connection was actually established with — information an
+off-path attacker typically cannot know or control.
+</div>
+
+<h2 id="sec3">3. Stateful Connection Tracking — NEW, ESTABLISHED, RELATED</h2>
+
+<table>
+<tr><th>State</th><th>Meaning</th><th>This module's own equivalent</th></tr>
+<tr><td>NEW</td><td>The very first packet of a connection, not yet confirmed as a two-way conversation</td><td><code>conn_state[conn_key] = "NEW"</code> — set the instant an outbound packet creates a fresh entry</td></tr>
+<tr><td>ESTABLISHED</td><td>A connection that has seen traffic in BOTH directions — genuinely confirmed as a real, ongoing conversation</td><td><code>conn_state[conn_key] = "ESTABLISHED"</code> — this module simplifies by marking it established immediately after the FIRST outbound packet, anticipating the expected reply, rather than waiting for actual two-way confirmation (a genuine simplification versus real conntrack, worth knowing)</td></tr>
+<tr><td>RELATED</td><td>A NEW connection that is logically associated with an ALREADY-ESTABLISHED one, even though it's technically a separate connection (e.g., FTP's separate data channel, opened because of an existing control channel) — not modeled in this module's simplified single-connection-type simulation</td><td>Not directly implemented — a genuine, real-world complexity this simulation deliberately omits for clarity</td></tr>
+</table>
+
+<div class="brain">
+<strong>Brain power:</strong> why does real conntrack (Linux's actual
+connection-tracking subsystem) need a RELATED state at all, given
+ESTABLISHED already covers "a confirmed, ongoing conversation"? Some
+protocols (classically, FTP in "active mode") legitimately open a
+SECOND, SEPARATE connection as part of ONE logical session — the data
+transfer connection is a genuinely different (src,dst,port) tuple than
+the control connection, and would look, from the firewall's perspective,
+exactly like Scenario 3's "unsolicited inbound with no matching state"
+if RELATED tracking didn't exist. RELATED lets the firewall recognize
+"this NEW connection attempt is happening BECAUSE of an existing
+ESTABLISHED one I already trust" and allow it through, without requiring
+a blanket, less-secure rule allowing ALL new inbound connections.
+</div>
+
+<h2 id="sec4">4. The Five iptables Chains, And Where Each Scenario Actually Runs</h2>
+
+<table>
+<tr><th>Chain</th><th>Timing</th><th>This module's scenario it corresponds to</th></tr>
+<tr><td>PREROUTING</td><td>Immediately on arrival, BEFORE the routing decision</td><td>DNAT/port-forwarding (Section 5) happens here — translating a packet's DESTINATION before deciding where to route it</td></tr>
+<tr><td>FORWARD</td><td>After routing, for traffic passing THROUGH the router to another host</td><td>Scenarios 3 and 4's DROP decisions — traffic destined for an internal host, not the router itself</td></tr>
+<tr><td>POSTROUTING</td><td>Just before leaving an outbound interface</td><td>Scenario 1's PAT translation (<code>MASQUERADE</code>) — the SOURCE gets rewritten here, as the very last step before the packet actually leaves</td></tr>
+</table>
+
+<div class="why">
+<strong>Why does DNAT (port forwarding) happen in PREROUTING — BEFORE
+routing — while SNAT/MASQUERADE happens in POSTROUTING — AFTER routing?</strong>
+This ordering is genuinely necessary, not arbitrary: the ROUTING
+DECISION itself (which interface should this packet go out of, or which
+internal host should it be delivered to) needs to be made based on the
+packet's FINAL, correct destination — so DNAT (which CHANGES the
+destination, e.g., from your public IP:8080 to an internal host's real
+address) must happen BEFORE routing even looks at the destination, or
+routing would make its decision based on the WRONG (not-yet-translated)
+address. Conversely, SNAT/MASQUERADE (changing the SOURCE address)
+doesn't affect the routing decision at all (routing only cares about the
+DESTINATION) — so it can safely happen LAST, right before the packet
+actually leaves, which is exactly why it lives in POSTROUTING.
+</div>
+
+<h2 id="sec5">5. Port Forwarding — A Deliberate, Manual Exception, Precisely Explained</h2>
+
+<p>This module's own iptables_reference.html frames port forwarding
+exactly right: "the ONE deliberate exception to Scenario 3's
+'unsolicited inbound is always dropped' rule." Understanding EXACTLY
+what a port forward creates is worth being completely precise about.</p>
+
+<div class="scenario">
+<h4>What a port-forward configuration actually creates, mechanically</h4>
+<pre>iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.1.50:80
+iptables -A FORWARD -p tcp -d 192.168.1.50 --dport 80 -j ACCEPT</pre>
+<p>This is TWO separate, necessary pieces, not one: the FIRST rule
+(PREROUTING/DNAT) says "whenever a packet arrives addressed to MY public
+IP on port 8080, REWRITE its destination to 192.168.1.50:80 instead" —
+without this, the packet would still be addressed to the ROUTER itself,
+which has nothing listening on port 8080. The SECOND rule
+(FORWARD/ACCEPT) is REQUIRED because DNAT alone only REWRITES the
+address — it does NOT bypass the default-drop FORWARD chain policy
+(Scenario 3's mechanism) on its own; without this explicit ACCEPT rule,
+the DNAT-translated packet would still be evaluated against the
+FORWARD chain's default-drop policy and dropped anyway, DESPITE having
+been correctly translated. Both rules together are what a router's
+"port forwarding" admin page setting actually compiles down to,
+EXACTLY matching this module's own reference material.</p>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "A user configures a DNAT
+rule for port forwarding but forgets the corresponding FORWARD/ACCEPT
+rule. What happens, and why?" The inbound packet's DESTINATION gets
+correctly rewritten by the DNAT/PREROUTING rule (address translation
+succeeds) — but the packet is STILL evaluated against the FORWARD
+chain's rules afterward, and with no explicit ACCEPT rule for this now-
+translated destination, it falls through to the default-drop policy
+(Scenario 3's mechanism) and gets dropped anyway. This is a genuinely
+common, real-world misconfiguration — "I set up port forwarding but it
+still doesn't work" frequently traces back to exactly this missing
+second rule, since NAT translation and firewall filtering are
+STRUCTURALLY SEPARATE decisions in the actual chain architecture, even
+though a router's simplified GUI often presents "port forwarding" as
+one single, atomic setting.
+</div>
+
+<h2 id="sec6">6. Port Exhaustion — The Real Math Behind A Real Limit</h2>
+
+<p>This module's own Exercise 1 asks you to model port exhaustion
+directly — worth understanding the actual numbers involved.</p>
+
+<div class="scenario">
+<h4>Worked scenario: the real port range and why it's finite</h4>
+<pre>TCP/UDP port numbers are 16-bit values (Module 02's struct.pack "H"
+format) -- 0 to 65535, a hard mathematical ceiling (Module 00a's
+2^16 = 65536 possible values).
+
+Ports 0-1023 are "well-known" ports, conventionally reserved for
+standard services (port 80=HTTP, 443=HTTPS, 53=DNS) -- NOT typically
+used as EXTERNAL/ephemeral PAT ports.
+
+This leaves roughly 1024-65535 -- about 64,511 usable external ports --
+for PAT to assign across ALL simultaneous outbound connections from
+your ENTIRE household, sharing the ONE public IP.
+
+64,511 is a LARGE number for ordinary home use, but genuinely NOT
+infinite -- a household with many devices doing heavy simultaneous
+connections (torrenting, many IoT devices each maintaining persistent
+cloud connections, multiple video streams) COULD, in principle,
+approach this ceiling, at which point next_external_port incrementing
+past 65535 (this module's own Exercise 1) would need explicit handling
+-- either wrapping around and REUSING already-freed ports (requiring
+tracking which are actually free, not just monotonically incrementing
+forever, which is what this module's own simplified simulation
+currently does) or rejecting new outbound connections entirely.</pre>
+</div>
+
+<h2 id="sec7">7. Full Code Walkthrough — nat_firewall_sim.py</h2>
+
+<pre>is_new = conn_key not in self.conn_state
+self.conn_state[conn_key] = "NEW" if is_new else self.conn_state[conn_key]
+...
+if is_new:
+    self.conn_state[conn_key] = "ESTABLISHED"</pre>
+<p>This is a deliberate, documented SIMPLIFICATION worth being precise
+about (echoing this module's own honest framing of what it does and
+doesn't fully model): a REAL stateful firewall typically only marks a
+connection ESTABLISHED after observing genuine TWO-WAY traffic (Section
+3's table) — this simulation instead marks it ESTABLISHED immediately
+upon the FIRST outbound packet, effectively pre-authorizing the reply
+it EXPECTS to receive. This is a reasonable simplification for
+teaching the CORE mechanism (an outbound connection creates a
+tracked state that permits a matching reply) without needing to model
+TCP's full handshake timing (Module 07's actual state machine) inside
+this already-focused NAT/firewall demonstration.</p>
+
+<h2 id="sec8">8. Many Worked Scenarios — Predicting ALLOW/DROP Before Running The Code</h2>
+
+<div class="scenario">
+<h4>Scenario: predict the outcome — an internal host opens a connection, then the SAME remote server opens a SECOND, separate connection back on a DIFFERENT port, unprompted</h4>
+<pre>Outbound: (192.168.1.30, 52000) -> (203.0.113.99, 443) -- ESTABLISHED
+  conn_key: (192.168.1.30, 52000, 203.0.113.99, 443)
+
+New inbound attempt: (203.0.113.99, 9000) -> your_external_ip:some_port
+  Even though this comes from the SAME remote IP that you legitimately
+  talked to, it's a DIFFERENT port (9000, not 443) and there's no
+  existing NAT/conn_state entry matching THIS specific new attempt at
+  all (no internal host ever initiated anything expecting THIS
+  connection) -- DROPPED, by the same logic as Scenario 3.
+
+This is exactly why protocols needing a genuinely SEPARATE, server-
+initiated second connection (classic FTP active mode) need the RELATED
+state mechanism (Section 3) or an explicit port-forward (Section 5) --
+"I already talked to this same remote IP once" is NOT sufficient
+grounds for a stateful firewall to allow an entirely different,
+unprompted connection attempt.</pre>
+</div>
+
+<h2 id="sec9">9. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming a port-forwarded service is now
+"secure" because it requires a specific IP/port to reach.</strong> A port
+forward is a DELIBERATE hole in the default-drop policy — anyone on the
+internet who discovers the correct external IP:port combination CAN
+reach the forwarded service, with the firewall's stateful protection
+providing ZERO benefit for THAT specific port (Section 5's ACCEPT rule
+applies unconditionally to traffic matching the forward, not
+conditionally based on prior outbound activity). The actual security of
+a port-forwarded service depends ENTIRELY on the service itself being
+properly secured (authentication, patched software, Module 16's
+vulnerability-assessment territory) — the firewall's NAT/stateful
+protection, which protects everything else on your network by default,
+is explicitly bypassed for whatever you've forwarded.
+</div>
+
+<h2 id="sec10">10. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 11, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Trace PAT's exact port-assignment mechanism for two internal hosts
+sharing the same internal port number.</li>
+<li>Explain precisely why a stateful firewall's ESTABLISHED check must
+verify the FULL 4-tuple, not just whether a port is currently mapped —
+and what attack this specifically defeats.</li>
+<li>Distinguish NEW, ESTABLISHED, and RELATED connection states, and
+explain what problem RELATED specifically solves (using FTP as an
+example).</li>
+<li>Map each of this module's four scenarios to its correct real
+iptables chain (PREROUTING, FORWARD, POSTROUTING).</li>
+<li>Explain why a DNAT rule alone is insufficient for port forwarding
+without a corresponding FORWARD/ACCEPT rule.</li>
+<li>Explain why port forwarding is a deliberate SECURITY TRADEOFF, not
+a free feature — and what actually protects a forwarded service once
+the firewall's default protection is bypassed for it.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 11 builds a real WireGuard VPN, an entirely
+different (cryptographic-authentication-based, rather than
+state-tracking-based) mechanism for deliberately reaching into a
+private network from outside, and assumes you understand exactly WHY
+that alternative mechanism is even necessary given this module's
+default-drop behavior.</p>
+
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>iptables/nftables Reference — Module 10</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 860px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 32px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0 24px; }
+  td, th { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; font-size: 0.92rem; }
+  th { background: #f4f4f4; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 10px 14px; border-radius: 6px; overflow-x: auto; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<h1>iptables/nftables Reference</h1>
+<p>How <code>nat_firewall_sim.py</code>'s simplified model maps onto a
+real Linux firewall's actual chains. pfSense/OPNsense (Module 09) run on
+a BSD firewall (pf) with different syntax but the identical conceptual
+pipeline described below.</p>
+
+<h2>The chains a packet actually passes through</h2>
+<table>
+<tr><th>Chain</th><th>When it runs</th><th>What it's for</th></tr>
+<tr><td><code>PREROUTING</code></td><td>Immediately on arrival, before routing decision</td><td>DNAT (destination NAT — e.g. port forwarding) happens here</td></tr>
+<tr><td><code>INPUT</code></td><td>After routing, if the packet is destined for this machine</td><td>The stateful ALLOW/DROP decision for traffic addressed to the firewall itself</td></tr>
+<tr><td><code>FORWARD</code></td><td>After routing, if the packet is passing through to another host</td><td>The stateful ALLOW/DROP decision for traffic routed between networks — this is where <code>nat_firewall_sim.py</code>'s Scenario 3/4 DROP decisions live on a real router</td></tr>
+<tr><td><code>OUTPUT</code></td><td>For packets originating from this machine itself</td><td>Rarely restrictive on a home router; matters more on a server you're hardening</td></tr>
+<tr><td><code>POSTROUTING</code></td><td>Just before leaving an interface</td><td>SNAT/MASQUERADE (source NAT) happens here — this is where Scenario 1's PAT translation actually occurs on a real Linux router</td></tr>
+</table>
+
+<h2>The exact rule that makes your home network's PAT work</h2>
+<pre># iptables (older, still extremely common)
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+
+# nftables (modern replacement)
+nft add rule nat postrouting oifname "eth0" masquerade</pre>
+<p><code>MASQUERADE</code>/<code>masquerade</code> is a special case of SNAT
+that automatically uses whatever IP the outbound interface currently has —
+this is precisely what <code>nat_firewall_sim.py</code>'s
+<code>outbound()</code> method does by always substituting
+<code>self.external_ip</code>, and it's why this exact one-line rule is
+almost universally what turns a bare Linux box into a home-router-style
+NAT gateway.</p>
+
+<h2>Stateful matching — the rule behind Scenario 2/3/4</h2>
+<pre># iptables
+iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -j DROP
+
+# nftables
+nft add rule filter forward ct state established,related accept
+nft add rule filter forward drop</pre>
+<p>The first rule is EXACTLY <code>nat_firewall_sim.py</code>'s
+<code>inbound()</code> check: allow only if this packet matches a
+connection state ("ct state established" = "this is return traffic for a
+connection we started"). The second rule is the default-deny fallback —
+literally Scenario 3's "no matching state, dropped" behavior, written as
+an explicit rule instead of implicit script logic.</p>
+
+<h2>A DNAT (port forwarding) rule, for comparison</h2>
+<pre># iptables -- forward external port 8080 to an internal web server
+iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 192.168.1.50:80
+iptables -A FORWARD -p tcp -d 192.168.1.50 --dport 80 -j ACCEPT</pre>
+<div class="note">
+This is the ONE deliberate exception to Scenario 3's "unsolicited inbound
+is always dropped" rule — a port forward is you explicitly telling the
+firewall "actually, let inbound connections to THIS specific port reach
+THIS specific internal host, even with no prior outbound connection."
+Every home router's "port forwarding" admin page setting compiles down to
+a rule shaped exactly like this.
+</div>
+
+</body>
+</html>

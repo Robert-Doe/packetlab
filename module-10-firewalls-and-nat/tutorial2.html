@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 10 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 10 — Deep Theory: iptables Commands and Conntrack, Explained From Zero</h1>
+
+<h2>1. Command-by-Command: Reading Real iptables Rules</h2>
+
+<h3><code>sudo iptables -t nat -L -n -v</code></h3>
+<p><strong>What each flag means:</strong> <code>-t nat</code> selects the
+NAT TABLE specifically — iptables organizes rules into separate tables
+by purpose (<code>filter</code>, the default, for allow/block decisions;
+<code>nat</code> for address/port translation; <code>mangle</code> for
+packet header modification), and without <code>-t nat</code> you'd see
+the (different) default filter table instead. <code>-L</code> means
+"List" the rules in the selected table. <code>-n</code> means "numeric" —
+show IP addresses and ports as raw numbers rather than resolving them to
+hostnames/service names (same reasoning as Module 07's
+<code>netstat -n</code>: faster, and avoids DNS lookups potentially
+leaking your activity or simply timing out). <code>-v</code> means
+"verbose" — additionally show packet and byte COUNTERS for each rule,
+letting you see exactly how much traffic has actually matched each rule
+since the counters were last reset.</p>
+
+<h3><code>sudo iptables -L FORWARD -n -v</code></h3>
+<p><strong>What it does differently:</strong> lists only the FORWARD
+chain specifically (rather than every chain in a table) — recall from
+<code>iptables_reference.html</code> that FORWARD is where a router's
+allow/block decisions for traffic passing THROUGH it (not addressed to
+the router itself) actually happen — exactly the chain
+Scenario 3/4's DROP behavior in <code>nat_firewall_sim.py</code> models.</p>
+
+<div class="why">
+<strong>Why does sudo matter here specifically?</strong> Reading or
+modifying firewall rules is a privileged kernel operation on every major
+OS — an unprivileged process being able to READ your firewall rules could
+leak security-relevant information about what's exposed (mapping your
+attack surface for free); being able to MODIFY them without privilege
+would be a critical security hole. This is the same privilege-boundary
+reasoning Module 00c covered for systemd, and Module 03 covered for the
+ARP cache — a recurring pattern throughout this course.
+</div>
+
+<h2>2. MASQUERADE vs. SNAT: A Real, Precise Distinction</h2>
+<p><code>iptables_reference.html</code>'s <code>MASQUERADE</code> rule is
+technically a SPECIAL CASE of the more general <code>SNAT</code> (Source
+NAT) target. Plain <code>SNAT</code> requires you to specify the EXACT
+external IP to translate to
+(<code>--to-source 203.0.113.7</code>) — appropriate when your external
+IP is static and known in advance. <code>MASQUERADE</code> instead
+automatically uses WHATEVER IP the outbound interface currently has,
+looked up dynamically at the moment each packet is processed — essential
+for a home router whose ISP-assigned public IP can change (DHCP-leased,
+common for residential internet) without requiring you to update the
+firewall rule every time it does.</p>
+
+<h2>3. Connection Tracking (conntrack), Formally</h2>
+<p>The <code>ESTABLISHED,RELATED</code> match Module 10's reference
+covers relies on Linux's <strong>conntrack</strong> subsystem — a
+kernel-level table tracking the state of every connection passing through
+the firewall, keyed by the full 5-tuple (source IP, source port,
+destination IP, destination port, protocol). This is the REAL
+implementation of exactly what <code>nat_firewall_sim.py</code>'s
+<code>conn_state</code> dictionary models in simplified Python.</p>
+<table>
+<tr><th>conntrack state</th><th>Meaning</th></tr>
+<tr><td>NEW</td><td>The first packet of a connection conntrack hasn't seen before</td></tr>
+<tr><td>ESTABLISHED</td><td>Part of a connection where conntrack has seen traffic in BOTH directions</td></tr>
+<tr><td>RELATED</td><td>Not literally part of an existing connection's 5-tuple, but logically associated with one (e.g., an FTP data connection related to an existing FTP control connection, or an ICMP error message related to an existing UDP/TCP flow)</td></tr>
+<tr><td>INVALID</td><td>A packet conntrack cannot associate with any known connection state at all, sometimes indicating a malformed or deliberately crafted packet</td></tr>
+</table>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain why the RELATED
+state exists as a category distinct from ESTABLISHED, using FTP as a
+concrete example." Active-mode FTP uses TWO separate TCP connections: a
+control connection (commands) and a SEPARATE data connection (file
+transfer), with the data connection's port negotiated dynamically WITHIN
+the control connection's own traffic. A naive stateful firewall tracking
+only exact 5-tuples would have no NEW-connection-permitting reason to
+allow the data connection's initial SYN — it doesn't match any existing
+connection's 5-tuple. RELATED specifically exists so a firewall can
+inspect application-layer protocol behavior (via a "connection tracking
+helper" module) and recognize "this new connection attempt was legitimately
+negotiated by an existing, trusted connection," permitting it without
+requiring a static, permanently-open rule for the entire dynamic port range.
+</div>
+
+<h2>4. Port Exhaustion, With Real Numbers (Exercise 1)</h2>
+<p>The dynamic/private port range (per IANA) is 49152-65535 — 16,384
+ports. Many NAT implementations additionally use some of the
+"registered" range (1024-49151) for outbound PAT, giving roughly
+64,000 usable ports total per external IP. A single Netflix 4K stream, a
+few IoT devices with frequent cloud check-ins, several browser tabs each
+opening multiple parallel connections, and background OS/app update
+checks can EASILY have several hundred simultaneous connections active
+in a typical household — nowhere near exhausting 64,000, but the math
+matters at a different scale: a LARGE ORGANIZATION behind a single NAT
+gateway (thousands of employees, each with dozens of simultaneous
+connections) can genuinely exhaust available ports, which is one real
+motivation for technologies like Carrier-Grade NAT using additional IP
+blocks specifically to expand available port pools beyond one IP's ~64,000.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>iptables table/chain structure, -t/-L/-n/-v flags</td><td>Module 09's real Linux lab VM administration, general firewall literacy</td></tr>
+<tr><td>MASQUERADE vs. SNAT</td><td>Real-world home router / cloud NAT gateway configuration</td></tr>
+<tr><td>conntrack states (NEW/ESTABLISHED/RELATED/INVALID)</td><td>Module 14's traffic analysis, Module 17's cloud security group statefulness</td></tr>
+<tr><td>Port exhaustion at scale</td><td>Module 17's cloud NAT gateway sizing considerations</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
