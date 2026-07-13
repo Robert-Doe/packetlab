@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 02 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 02 — Deep Theory: OSI vs. TCP/IP, Command by Command</h1>
+
+<h2>1. Why Two Competing Models Exist At All</h2>
+<p>The OSI model (7 layers: Physical, Data Link, Network, Transport,
+Session, Presentation, Application) was developed by the ISO in the
+early 1980s as a THEORETICAL reference — a way to reason about networking
+in the abstract, designed so any vendor's Layer N implementation could
+theoretically interoperate with any other vendor's Layer N+1, as long as
+both honored the interface between layers. TCP/IP (4 layers: Link,
+Internet, Transport, Application) is not a competing theory — it's the
+protocol suite that actually shipped and won, developed separately
+(DARPA-funded, 1970s) and standardized through RFCs, not a formal
+standards body's abstract model. You use OSI vocabulary to TALK about
+networking (everyone says "Layer 2," "Layer 3," "Layer 7") while the
+actual bytes on the wire follow TCP/IP's simpler structure.</p>
+
+<h2>2. Command-by-Command: What tutorial.html Actually Had You Do</h2>
+
+<h3><code>python layer_builder.py</code></h3>
+<p><strong>What it does:</strong> runs a Python script that calls
+<code>struct.pack()</code> repeatedly to assemble raw bytes representing
+an Ethernet header, then an IPv4 header, then a TCP header, then an HTTP
+request — concatenated together into one buffer, then printed as hex.
+<strong>Why struct.pack specifically:</strong> Python's built-in
+<code>struct</code> module takes a "format string" describing exactly how
+many bytes each value should occupy and in what byte order, then packs
+Python values into a raw bytes object matching that layout — exactly the
+manual, byte-precise control Module 00b's C structs also demonstrated,
+just in Python instead of C.</p>
+
+<h3><code>node layer_builder.js</code></h3>
+<p><strong>What it does:</strong> the identical construction using Node's
+<code>Buffer</code> class instead of Python's struct module — different
+API, identical resulting bytes, confirmed byte-for-byte during this
+module's original build.</p>
+
+<h3>Installing Wireshark (<code>wireshark.org</code>, with Npcap on Windows)</h3>
+<p><strong>Why Npcap specifically, on Windows:</strong> capturing raw
+network traffic — seeing every byte crossing an interface, not just the
+data your own program sent or received — requires a special OS-level
+driver, because ordinary application-level sockets are deliberately NOT
+given this level of access (a normal program can only see traffic
+addressed to it). Npcap is that driver for Windows (the direct successor
+to the older WinPcap project); macOS and Linux have this capability built
+into the kernel already (accessed via <code>libpcap</code>), which is why
+only Windows needs an extra installation step here.</p>
+
+<h3><code>tcp.port == 8080</code> (the Wireshark display filter)</h3>
+<p><strong>What it does:</strong> Wireshark, by default, CAPTURES
+everything crossing the selected interface (potentially thousands of
+packets from unrelated background traffic — DNS lookups, cloud sync
+software, etc.) but only DISPLAYS packets matching your filter
+expression. <code>tcp.port == 8080</code> means "show me only packets
+where the TCP source OR destination port is 8080" — Wireshark's filter
+language understands protocol fields by name (<code>tcp.port</code>,
+<code>ip.addr</code>, <code>http.request.method</code>, etc.), which is
+why learning this filter syntax (not just clicking through a GUI menu) is
+the actual skill worth building.</p>
+<div class="why">
+<strong>Why filter the DISPLAY rather than the capture itself?</strong>
+Because you often don't know exactly what you're looking for until AFTER
+you've captured — filtering only the view, while keeping the full capture
+underneath, lets you change your filter and re-examine the same data
+without re-capturing. (Wireshark does also support CAPTURE filters, a
+separate, stricter mechanism applied before packets are even recorded —
+useful when capture volume itself is the problem, e.g. on a busy
+production link, but not needed for this module's small localhost test.)
+</div>
+
+<h3>Edit → Find Packet (Step 4)</h3>
+<p><strong>What it does:</strong> searches every captured packet's raw
+bytes (not just the summary line) for a string you specify — this is
+literally scanning the same hex bytes <code>layer_builder.py</code>
+prints, just for whichever packet actually contains your marker string,
+proving the exact server-side response text made it onto the wire
+unmodified.</p>
+
+<h2>3. Why Layers 5/6 Have No Header — Formally</h2>
+<p>OSI's Session layer (managing a logical conversation, independent of
+the underlying connection) and Presentation layer (data format
+translation/encoding, e.g. character sets, compression, encryption
+framing) were designed as SEPARATE concerns from Application layer logic.
+In practice, every real-world application protocol (HTTP, SMTP, DNS)
+simply handles session state and data formatting ITSELF, as part of its
+own application-layer design, rather than delegating to a separate
+protocol layer underneath. TLS (Module 13) is sometimes informally
+described as "Presentation layer" functionality (it does provide
+encoding/encryption), but architecturally it sits BETWEEN Transport and
+Application as its own protocol with its own header — not as OSI's
+Presentation layer literally implemented. This is the concrete, structural
+reason a Wireshark capture never shows "Layer 5" or "Layer 6" headers:
+those layers were never implemented as distinct wire-format protocols by
+anyone, ever, at internet scale.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "A student claims TLS is
+'the presentation layer, implemented.' Evaluate this claim." Partially
+correct at best: TLS does perform encoding/encryption, functionality OSI
+assigned to Presentation — but TLS is architecturally its own protocol
+with its own header format, sitting between Transport and Application in
+the TCP/IP stack, not literally OSI's Presentation layer given form. The
+mapping is a loose ANALOGY useful for building intuition, not a precise
+architectural correspondence — a strong exam answer should flag this
+distinction rather than assert the equivalence uncritically.
+</div>
+
+<h2>4. Encapsulation, As a Formal Operation</h2>
+<p><code>layer_builder.py</code> builds bytes INSIDE OUT: HTTP payload
+first, wrapped by a TCP header, wrapped by an IP header, wrapped by an
+Ethernet header. Formally, encapsulation is a PREPEND operation at each
+layer — each layer takes the ENTIRE previous layer's output (header +
+whatever it already contained) as an opaque blob of data, and prepends
+its own header in front, without inspecting or modifying what it's
+wrapping. This "opacity" property is fundamental: the Ethernet layer has
+no idea whether the payload it's carrying is IP, ARP, or something else
+entirely (which is exactly what the <code>ethertype</code> field
+communicates to the receiver — "here's what kind of thing you'll find
+once you strip MY header off").</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>struct.pack/Buffer byte-precise construction</td><td>Every subsequent frame-building file in this course (Module 03, 05, 12, 18)</td></tr>
+<tr><td>Wireshark display filter syntax</td><td>Module 14's deep packet analysis, every module with a real capture step</td></tr>
+<tr><td>Encapsulation as prepend-and-opaque-wrap</td><td>Module 11's VPN tunneling (an entire extra encapsulation layer)</td></tr>
+<tr><td>TTL/ethertype as "what's inside" signaling fields</td><td>Module 03's frame parsing, Module 05's routing</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

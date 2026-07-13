@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 02 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 02 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end, you should be able to draw
+the OSI 7-layer model AND explain precisely how TCP/IP's 4 layers
+collapse it, trace the Internet checksum algorithm by hand on a small
+example, decode every field of <code>layer_builder.py</code>'s
+<code>struct.pack</code> format strings without looking them up, and
+narrate a full request/response cycle as a story of encapsulation and
+de-encapsulation happening at every hop.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">The OSI 7-layer model, formally, layer by layer</a></li>
+<li><a href="#sec2">TCP/IP's 4 layers — what actually collapsed, and why</a></li>
+<li><a href="#sec3">Encapsulation and de-encapsulation — the full journey, narrated</a></li>
+<li><a href="#sec4">struct.pack, decoded completely — every format character</a></li>
+<li><a href="#sec5">The Internet checksum — traced by hand, byte by byte</a></li>
+<li><a href="#sec6">The IPv4 header, field by field, with real values</a></li>
+<li><a href="#sec7">TCP flags — the bitfield, decoded</a></li>
+<li><a href="#sec8">Wireshark scenarios — what you'll actually see, and why</a></li>
+<li><a href="#sec9">Full code walkthrough — layer_builder.py</a></li>
+<li><a href="#sec10">Troubleshooting and common confusions</a></li>
+<li><a href="#sec11">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. The OSI 7-Layer Model, Formally, Layer By Layer</h2>
+
+<table>
+<tr><th>#</th><th>Layer</th><th>Job</th><th>Real-world analogy</th></tr>
+<tr><td>7</td><td>Application</td><td>What the actual program wants to say — HTTP, DNS, SMTP</td><td>The LETTER's actual written content</td></tr>
+<tr><td>6</td><td>Presentation</td><td>Data format/encoding — encryption, compression, character encoding</td><td>Translating the letter into a language the recipient reads</td></tr>
+<tr><td>5</td><td>Session</td><td>Establishing, managing, and tearing down a logical conversation between two endpoints</td><td>The ongoing correspondence relationship itself, across multiple letters</td></tr>
+<tr><td>4</td><td>Transport</td><td>End-to-end delivery guarantees (or lack thereof) — TCP's reliability, UDP's speed</td><td>Registered mail (tracked, confirmed) vs. a regular stamp (fire and forget)</td></tr>
+<tr><td>3</td><td>Network</td><td>Logical addressing and routing ACROSS multiple networks — IP addresses</td><td>The postal ZIP code system routing mail between cities</td></tr>
+<tr><td>2</td><td>Data Link</td><td>Addressing and delivery WITHIN one physical/local segment — MAC addresses, framing</td><td>The mail carrier's own local delivery route</td></tr>
+<tr><td>1</td><td>Physical</td><td>Actual bits on the wire/radio — voltage, light pulses, radio waves</td><td>The physical truck and road the mail travels on</td></tr>
+</table>
+
+<div class="brain">
+<strong>Brain power:</strong> why is the OSI model taught as 7 layers if
+real internet traffic (per this module's own <code>layer_builder.py</code>)
+never has distinct Layer 5 or Layer 6 headers at all? Because OSI was
+designed as a GENERAL, protocol-agnostic reference model — a
+vocabulary and conceptual separation of concerns useful for discussing
+ANY networking technology, not a specification that every real protocol
+suite must implement literally. TCP/IP (the protocol suite the actual
+internet runs on) was developed somewhat independently and, in practice,
+never needed session/presentation as SEPARATE header layers — those
+concerns (if handled at all) got absorbed into the application layer
+itself (e.g., TLS, technically operating "above" TCP and "below" HTTP,
+handles what OSI would call presentation-layer encryption, but as part
+of the application stack, not a distinct wire-format layer with its own
+header).
+</div>
+
+<h2 id="sec2">2. TCP/IP's 4 Layers — What Actually Collapsed, And Why</h2>
+
+<table>
+<tr><th>TCP/IP layer</th><th>Corresponds to OSI layer(s)</th><th>This module's real header</th></tr>
+<tr><td>Application</td><td>7, 6, 5 (Application, Presentation, Session — all merged)</td><td>The raw HTTP request bytes, 54 bytes onward in <code>layer_builder.py</code>'s frame</td></tr>
+<tr><td>Transport</td><td>4 (Transport)</td><td>The 20-byte TCP header, bytes 34-53</td></tr>
+<tr><td>Internet</td><td>3 (Network)</td><td>The 20-byte IPv4 header, bytes 14-33</td></tr>
+<tr><td>Link</td><td>2, 1 (Data Link, Physical — merged)</td><td>The 14-byte Ethernet header, bytes 0-13</td></tr>
+</table>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "A student claims 'TCP/IP
+has fewer layers because it's a simplified, less capable version of
+OSI.' Correct this claim precisely." This gets the causality backwards.
+TCP/IP wasn't DESIGNED as a simplification of OSI — TCP/IP predates
+OSI's formal standardization and was developed pragmatically, layer by
+layer, as ARPANET's actual working protocol suite. OSI was later
+developed as a more THEORETICALLY COMPLETE reference model, partly
+informed by observing what protocol suites like TCP/IP actually needed.
+The "collapsing" is really OSI splitting concerns TCP/IP never found
+practical reasons to split into separate WIRE FORMATS — TCP/IP isn't
+missing capability; application-layer protocols (HTTP, TLS-wrapped
+protocols) handle session and presentation concerns entirely within
+their own application-level design, without needing a dedicated,
+universal header for it.
+</div>
+
+<h2 id="sec3">3. Encapsulation and De-Encapsulation — The Full Journey, Narrated</h2>
+
+<div class="scenario">
+<h4>Full scenario: the journey of an HTTP GET request, matching exactly what Step 3's Wireshark capture shows</h4>
+<p><strong>At the sender (traffic_generator.py's machine):</strong> the
+application layer starts with pure text:
+<code>GET /layer-demo HTTP/1.1\r\nHost: example.invalid\r\n\r\n</code> —
+just bytes, no networking-specific structure yet. The TRANSPORT layer
+(TCP, via the OS's own network stack, not something the Python script
+builds by hand in real traffic — that's what makes Step 1's manual
+build special, seeing normally-invisible machinery) wraps this in a TCP
+segment: adds source/destination PORT numbers, a sequence number, flags
+— but crucially, the HTTP text itself is UNTOUCHED, just wrapped, sitting
+entirely inside the TCP segment's payload. The NETWORK layer (IP) wraps
+THAT entire TCP segment inside an IP packet, adding source/destination
+IP addresses — again, the TCP segment (including the HTTP text inside
+it) is completely unchanged, just wrapped one layer further out. The
+DATA LINK layer (Ethernet) wraps the ENTIRE IP packet inside a frame,
+adding source/destination MAC addresses for the immediate next hop.</p>
+<p><strong>In transit:</strong> at every ROUTER hop between sender and
+receiver (irrelevant for this module's own loopback-only capture, but
+critical for real internet traffic, and exactly Module 01 Section 5's
+"packet's journey" lesson), the Ethernet FRAME gets stripped off and a
+BRAND NEW one built for the next hop — but the IP packet inside (and
+everything inside THAT) travels completely unchanged, hop after hop,
+all the way to the destination.</p>
+<p><strong>At the receiver (http_target_server.py's machine — here, the
+same machine, via loopback):</strong> the process runs in EXACT reverse
+— DE-ENCAPSULATION. The Ethernet frame is stripped off first (Data Link
+layer done, IP packet extracted). The IP header is stripped off next
+(Network layer done, TCP segment extracted). The TCP header is stripped
+off next (Transport layer done, raw HTTP text extracted) — and finally,
+Flask's own HTTP parsing (Application layer) interprets that raw text as
+an actual GET request and routes it to the matching Python function.</p>
+</div>
+
+<div class="why">
+<strong>Why does this matter for reading a REAL Wireshark capture,
+rather than just being a nice mental model?</strong> This is EXACTLY
+why Wireshark displays a captured frame as a nested tree — Frame →
+Ethernet II → Internet Protocol Version 4 → Transmission Control
+Protocol → Hypertext Transfer Protocol (Step 3's own expected output) —
+each layer, clicked and expanded, shows you ONLY that layer's own header
+fields, with everything below it in the tree being that layer's PAYLOAD
+(everything the next layer up wrapped). Wireshark isn't inventing this
+structure — it's literally performing the same de-encapsulation, layer
+by layer, that the receiving machine's own network stack performed, and
+displaying each stripped-off layer as a separate expandable tree node.
+</div>
+
+<h2 id="sec4">4. struct.pack, Decoded Completely — Every Format Character</h2>
+
+<p><code>layer_builder.py</code> uses Python's <code>struct</code>
+module to pack Python values into an EXACT binary layout — this is the
+Python-level equivalent of Module 00b's C structs (Section 3 there),
+and format strings like <code>"!6s6sH"</code> deserve to be fully,
+literally decoded, not glossed over.</p>
+
+<table>
+<tr><th>Character</th><th>Meaning</th></tr>
+<tr><td><code>!</code></td><td>Byte order: NETWORK byte order (big-endian) — this single character is what guarantees the packed bytes are correct "on the wire" order regardless of what byte order the host CPU natively uses, directly reusing Module 00b Section 4's <code>htons()</code>/<code>htonl()</code> lesson, just performed by Python's struct module instead of a C function call</td></tr>
+<tr><td><code>6s</code></td><td>A fixed-length byte STRING of exactly 6 bytes — used for MAC addresses (6 bytes each, Module 01 Section 3.1)</td></tr>
+<tr><td><code>H</code></td><td>Unsigned SHORT — exactly 2 bytes (16 bits) — used for EtherType, port numbers, and other 2-byte protocol fields</td></tr>
+<tr><td><code>B</code></td><td>Unsigned BYTE — exactly 1 byte (8 bits) — used for fields like TTL, protocol number, TOS</td></tr>
+<tr><td><code>L</code></td><td>Unsigned LONG — exactly 4 bytes (32 bits) — used for TCP sequence/ack numbers, IP addresses (when passed as raw integers rather than the <code>4s</code> byte-string form this file actually uses)</td></tr>
+<tr><td><code>4s</code></td><td>A fixed-length byte string of exactly 4 bytes — used here for IP addresses, already converted to raw bytes before packing</td></tr>
+</table>
+
+<div class="scenario">
+<h4>Worked scenario: decoding "!BBHHHBBH4s4s" completely, field by field, matching build_ipv4_header() exactly</h4>
+<pre>!    -- network byte order for the whole structure
+B    -- version_ihl        (1 byte)
+B    -- tos                (1 byte)
+H    -- total_length       (2 bytes)
+H    -- identification     (2 bytes)
+H    -- flags_frag_offset  (2 bytes)
+B    -- ttl                (1 byte)
+B    -- protocol           (1 byte)
+H    -- checksum           (2 bytes)
+4s   -- src_ip              (4 bytes)
+4s   -- dst_ip              (4 bytes)
+
+Sum: 1+1+2+2+2+1+1+2+4+4 = 20 bytes -- EXACTLY the IPv4 header's
+required length, confirmed by this file's own boundaries list
+("LAYER 3 -- IPv4 header (Network)", 14, 34) -- 34-14=20.</pre>
+<p>This ONE format string, read left to right, is a COMPLETE,
+unambiguous specification of the entire IPv4 header's byte layout —
+exactly the same information Module 00b's packed C struct expresses,
+just via a different (Python-native) notation instead of C's field
+declarations.</p>
+</div>
+
+<h2 id="sec5">5. The Internet Checksum — Traced By Hand, Byte By Byte</h2>
+
+<p><code>checksum16()</code> implements RFC 1071's "Internet checksum"
+— a real, still-actively-used error-detection algorithm. Trace it
+completely on a tiny example (NOT the module's real 20-byte header, for
+tractability — this exact algorithm, just on more bytes).</p>
+
+<h3>5.1 — Why ONES' complement, specifically, and not ordinary addition</h3>
+<p>Ordinary binary addition can OVERFLOW past the available bit width
+and simply lose the overflow bit (Module 00a Section 5.1's "wraps mod
+2^n" idea) — a naive sum would silently discard exactly the information
+most useful for detecting certain error patterns. Ones'-complement
+addition instead performs an "END-AROUND CARRY": any overflow bit that
+would normally be lost is instead ADDED BACK IN to the low end of the
+result, rather than discarded.</p>
+
+<div class="scenario">
+<h4>Worked scenario: ones'-complement addition of two 16-bit words, with a real carry, traced completely</h4>
+<pre>word1 = 0xFFFF
+word2 = 0x0001
+
+Ordinary binary addition:
+  0xFFFF + 0x0001 = 0x10000  (this needs 17 bits -- doesn't fit in 16)
+
+Ones'-complement "end-around carry": take the bit that overflowed past
+bit 16 (the leading '1' in 0x10000) and ADD IT BACK into the low end:
+  0x10000 -> take off the overflow bit (0x1_0000 -> carry=1, remainder=0x0000)
+  0x0000 + 1 (the carried bit) = 0x0001
+
+Result: 0x0001 (NOT 0x0000, which a naive truncating sum would give)</pre>
+<p>This matches EXACTLY <code>checksum16()</code>'s own loop:
+<code>while total >> 16: total = (total & 0xFFFF) + (total >> 16)</code>
+— <code>total >> 16</code> extracts whatever bits overflowed past
+position 16 (the "carry"), <code>total & 0xFFFF</code> keeps only the
+low 16 bits (discarding the overflow from the RUNNING total, since it's
+about to be re-added), and the loop repeats until NOTHING overflows past
+bit 16 anymore (handles the rare case where re-adding the carry itself
+causes another, smaller overflow).</p>
+</div>
+
+<h3>5.2 — The final one's-complement (bitwise NOT)</h3>
+<p>After summing all 16-bit words (with end-around carry folded in), the
+function does <code>~total & 0xFFFF</code> — flip EVERY bit (Module 00a
+Section 4.4's NOT operation), then mask to 16 bits (since Python's
+<code>~</code> operator, unlike a fixed-width language, would otherwise
+produce a negative number of unlimited magnitude, an important, real
+Python-specific gotcha worth knowing).</p>
+
+<div class="why">
+<strong>Why take the final complement at all, rather than just using the
+raw sum directly as the checksum?</strong> This is what makes VERIFICATION
+elegantly simple at the receiving end: if a receiver sums ALL the words
+INCLUDING the transmitted checksum field itself (using the same
+ones'-complement addition), a CORRECT, uncorrupted packet will always
+produce exactly <code>0xFFFF</code> as the total — because the checksum
+was specifically constructed to be the complement of everything else,
+so adding it back in "cancels out" perfectly. The receiver doesn't need
+to separately recompute and COMPARE two values — it just checks "does
+this one sum equal all-ones," a simpler operation.
+</div>
+
+<h2 id="sec6">6. The IPv4 Header, Field By Field, With Real Values</h2>
+
+<table>
+<tr><th>Field</th><th>This module's real value</th><th>Meaning</th></tr>
+<tr><td><code>version_ihl</code></td><td><code>0x45</code></td><td>Packed as ONE byte holding TWO 4-bit values: version=4 (upper nibble) and IHL (Internet Header Length)=5 (lower nibble, meaning 5×4=20 bytes — this is exactly why <code>(4 << 4) | 5</code> produces 0x45: shift 4 left by 4 bits to place it in the upper nibble, OR in 5 for the lower nibble, Module 00a Section 4.1's bitwise OR technique applied directly)</td></tr>
+<tr><td><code>total_length</code></td><td>91 (in the module's real captured example)</td><td>The ENTIRE IP packet's length — IP header (20) + TCP header (20) + HTTP payload — deliberately NOT including the 14-byte Ethernet header, since from IP's perspective, Ethernet framing is a lower layer it has no visibility into</td></tr>
+<tr><td><code>identification</code></td><td><code>0x1c46</code> (arbitrary in this demo)</td><td>Used to reassemble FRAGMENTED packets (Module 07/related territory) — all fragments of the same original packet share this same identification value</td></tr>
+<tr><td><code>flags_frag_offset</code></td><td><code>0x4000</code></td><td>The upper 3 bits are FLAGS (bit for "Don't Fragment," set here), the remaining 13 bits are the fragment OFFSET (0 here, meaning this isn't a fragment of anything)</td></tr>
+<tr><td><code>ttl</code></td><td>64</td><td>Time To Live — decremented at every router hop, packet dropped at 0 — exactly the mechanism Module 01 Section 8.4 explained traceroute exploiting</td></tr>
+<tr><td><code>protocol</code></td><td>6</td><td>Identifies what's INSIDE this IP packet — 6 means TCP, 17 would mean UDP, 1 would mean ICMP (Module 01's ping) — this is how a receiving machine's network stack knows which higher-layer protocol handler to hand the payload to</td></tr>
+</table>
+
+<h2 id="sec7">7. TCP Flags — The Bitfield, Decoded</h2>
+
+<p><code>build_tcp_header()</code> packs <code>data_offset << 8 | flags</code>
+into one 16-bit field — worth fully decoding, since TCP flags recur
+throughout Module 07.</p>
+
+<div class="scenario">
+<h4>Worked scenario: decoding flags=0x02 (SYN) bit by bit</h4>
+<pre>TCP flags are a single byte, each bit a distinct flag:
+  bit 5: URG   bit 4: ACK   bit 3: PSH   bit 2: RST   bit 1: SYN   bit 0: FIN
+
+0x02 = binary 00000010
+                     ^-- bit 1 set -- this IS the SYN flag
+
+This is exactly why 0x02 means "SYN flag set, nothing else" -- and why
+a SYN-ACK (the second step of TCP's 3-way handshake, Module 07's core
+territory) would be flags = SYN | ACK = 0x02 | 0x10 = 0x12.</pre>
+</div>
+
+<h2 id="sec8">8. Wireshark Scenarios — What You'll Actually See, And Why</h2>
+
+<div class="scenario">
+<h4>Scenario: you see MORE than 10 packets in your capture, not exactly 10</h4>
+<p>This is normal, not a sign of error — real TCP behavior on loopback
+can involve additional packets your terminal-level narration doesn't
+show (like TCP's own internal ACKs for received data, separate from the
+application-level request/response exchange, or delayed-ACK behavior
+where the OS combines an ACK with the next outgoing data rather than
+sending it as a completely separate packet). Focus on identifying the 3
+handshake packets, the request, the response, and 4 teardown packets
+BY THEIR FLAGS specifically, rather than expecting an exact total count.</p>
+</div>
+
+<div class="scenario">
+<h4>Scenario: Wireshark's own packet list shows a DIFFERENT total length than what layer_builder.py printed</h4>
+<p>This is expected and instructive, not a bug: Wireshark's default
+"length" column typically includes ADDITIONAL framing overhead your
+OS's real network stack adds that this module's hand-built version,
+focused purely on the logical protocol headers, doesn't model (e.g., on
+loopback specifically, some platforms show a synthetic "loopback"
+pseudo-header, or Wireshark's own capture length accounting can differ
+slightly from the logical IP total_length field). Compare the IP
+header's OWN <code>total_length</code> FIELD value (visible when you
+expand the IP layer in Wireshark) against <code>layer_builder.py</code>'s
+printed value specifically — that's the apples-to-apples comparison,
+not Wireshark's outer capture-length column.</p>
+</div>
+
+<h2 id="sec9">9. Full Code Walkthrough — layer_builder.py</h2>
+
+<h3>9.1 — Why payload_len is computed and passed in, rather than the function figuring it out itself</h3>
+<pre>ip = build_ipv4_header(
+    src_ip="192.0.2.10", dst_ip="192.0.2.20",
+    payload_len=len(tcp) + len(payload),
+)</pre>
+<p><code>build_ipv4_header()</code> needs to know the TOTAL length of
+everything it will ultimately CONTAIN (TCP header + HTTP payload) to
+correctly fill in its own <code>total_length</code> field — but the IP
+header ITSELF is built and returned before the full frame is assembled
+by concatenation (<code>frame = eth + ip + tcp + payload</code>) at the
+end of <code>main()</code>. This is why the caller computes
+<code>len(tcp) + len(payload)</code> explicitly and passes it IN, rather
+than the function somehow "knowing" what will eventually surround it —
+a real, general pattern in protocol-building code: outer headers often
+need to know inner content's SIZE (not necessarily its full content)
+before that content is fully assembled or placed.</p>
+
+<h3>9.2 — Why documentation-reserved addresses are used throughout</h3>
+<p>Every address in this file — <code>192.0.2.10</code>/<code>.20</code>
+(from the RFC 5737 <code>TEST-NET-1</code> block, reserved specifically
+for documentation and example use), <code>deadbeef0001</code>/<code>0002</code>
+MAC addresses, <code>example.invalid</code> (from RFC 2606's reserved
+<code>.invalid</code> TLD) — is DELIBERATELY drawn from ranges the real
+internet guarantees will never correspond to an actual, real device.
+This is a genuine, real convention (not unique to this course) used
+throughout networking documentation, textbooks, and RFCs themselves,
+specifically so example traffic can never be mistaken for or accidentally
+resemble real, live network activity.</p>
+
+<h2 id="sec10">10. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming IP's total_length includes the Ethernet header.</strong>
+It does NOT — this module's own printed summary explicitly calls this
+out ("Ethernet's 14 bytes are never counted here"), and it's one of the
+single most common off-by-14 errors when hand-computing expected packet
+sizes. IP's <code>total_length</code> field describes ONLY what IP
+itself is responsible for: its own 20-byte header plus everything
+IP considers its payload (TCP header + HTTP data) — Ethernet framing is
+a COMPLETELY SEPARATE, lower layer that wraps the finished IP packet
+from the OUTSIDE, and IP has no awareness of it at all.
+</div>
+
+<div class="scenario">
+<h4>Confusion: "why does the checksum field get set to 0 temporarily before computing the real checksum?"</h4>
+<p>This is a real, necessary technique, not an oversight:
+<code>build_ipv4_header()</code> first packs the ENTIRE header with the
+checksum field as a placeholder (0), computes the checksum OVER those
+packed bytes (including the zeroed checksum field itself — ones'-complement
+addition of 0 doesn't change the sum, so this is safe), and THEN
+re-packs the header a second time with the REAL computed checksum value
+substituted in. The checksum field cannot be computed "into itself" —
+you need SOME placeholder value while calculating what the real value
+should be, and 0 is the natural, safe choice since it doesn't perturb
+the ones'-complement sum during the calculation pass.</p>
+</div>
+
+<h2 id="sec11">11. Comprehensive Recap And Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 03, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Draw the OSI 7-layer model AND the TCP/IP 4-layer model side by
+side, showing exactly which OSI layers collapse into which TCP/IP
+layer.</li>
+<li>Narrate the full encapsulation/de-encapsulation journey of an HTTP
+request, explaining what happens to the ORIGINAL bytes at every layer
+boundary (wrapped, never modified).</li>
+<li>Decode any <code>struct.pack</code> format string used in this
+module's code, field by field, computing the total byte length.</li>
+<li>Trace the Internet checksum's ones'-complement addition (including
+end-around carry) by hand on a small example with a real overflow.</li>
+<li>Explain precisely why IP's <code>total_length</code> field excludes
+the Ethernet header's 14 bytes.</li>
+<li>Decode a TCP flags byte (like 0x02 or 0x12) bit by bit, naming which
+flags are set.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 03 zooms into the FIRST 14 bytes of every frame you
+just built and captured, and assumes you're already completely
+comfortable with "the Ethernet header is layer 2, here's exactly where
+it starts and ends" as a given, not something to re-derive.</p>
+
+</body>
+</html>

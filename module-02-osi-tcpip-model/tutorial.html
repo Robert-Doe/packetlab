@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 02 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 02 — Tutorial</h1>
+<p>Goal: build a frame by hand (bytes you assemble yourself), then capture a
+real one crossing your own loopback interface, and confirm they agree.
+This is the module where "the OSI model" stops being a diagram you
+memorized and becomes bytes you can point at.</p>
+
+<h2>Step 1 — build a frame by hand, no network required</h2>
+<pre>cd module-02-osi-tcpip-model
+python layer_builder.py</pre>
+<div class="expect"><strong>Expected output:</strong> an annotated hex dump,
+four sections labeled Layer 2 (Ethernet, 14 bytes), Layer 3 (IPv4, 20
+bytes), Layer 4 (TCP, 20 bytes), Layer 7 (HTTP, however long your request
+text is) — total 105 bytes. Read the closing note about Layers 5/6 (Session,
+Presentation) having no header at all in real TCP/IP traffic — that's the
+single most important "OSI vs TCP/IP" fact this module teaches.
+</div>
+<p>Now run the JS version and diff the two outputs by eye:</p>
+<pre>node layer_builder.js</pre>
+<div class="expect">Same hex bytes, same 91-byte IP total length, same
+everything — two languages, one wire format.</div>
+
+<h2>Step 2 — install Wireshark (one-time, external tool)</h2>
+<p>This course doesn't ship Wireshark — it's a free, open-source capture
+tool you install yourself from <code>wireshark.org</code>. On Windows it
+installs Npcap alongside it (needed for raw capture access); on macOS/Linux
+your package manager has it (<code>brew install --cask wireshark</code>,
+<code>apt install wireshark</code>).</p>
+<div class="note">You may need to run Wireshark as Administrator/root, or
+add your user to the appropriate capture group (<code>wireshark</code>
+group on Linux) — this is normal; raw packet capture is a privileged
+operation on every OS, which is also why this course's own Python/Node code
+never attempts it directly (see DECISIONS.md).</div>
+
+<h2>Step 3 — capture a real request</h2>
+<ol>
+  <li>Open Wireshark, select your <strong>Loopback</strong> interface
+      (Windows: "Adapter for loopback traffic capture"; macOS/Linux:
+      <code>lo0</code>/<code>lo</code>).</li>
+  <li>In the display filter bar, type <code>tcp.port == 8080</code> and
+      press Enter (filters the view; capture continues regardless).</li>
+  <li>Click the shark-fin "start capture" button.</li>
+  <li>In a terminal: <pre>python http_target_server.py</pre></li>
+  <li>In a second terminal: <pre>python traffic_generator.py</pre></li>
+  <li>Back in Wireshark, stop the capture (red square).</li>
+</ol>
+<div class="expect"><strong>Expected:</strong> roughly 10 packets appear:
+3 for the handshake (flags <code>SYN</code>, <code>SYN, ACK</code>,
+<code>ACK</code>), 1+ carrying your GET request, 1+ carrying the HTTP
+response, and 4 for teardown (<code>FIN, ACK</code> pairs in each
+direction) — matching exactly the 5 steps <code>traffic_generator.py</code>
+printed to your terminal. Click any packet and expand its layers in the
+middle pane — Wireshark labels them <code>Frame</code> →
+<code>Ethernet II</code> → <code>Internet Protocol Version 4</code> →
+<code>Transmission Control Protocol</code> → <code>Hypertext Transfer
+Protocol</code>. That's the exact same 4-layer stack
+<code>layer_builder.py</code> built by hand in Step 1, this time captured
+for real.</li>
+</div>
+
+<h2>Step 4 — find your marker</h2>
+<p>In Wireshark, use <strong>Edit → Find Packet</strong>, search for string
+<code>LAYER-DEMO-PAYLOAD-92f1</code> in packet bytes. You should land on the
+response packet. Expand its <code>Hypertext Transfer Protocol</code> layer
+and find the marker in the response body — proof the exact bytes your
+Flask route returned are the exact bytes that crossed the interface.</p>
+
+<h2>Exercises before Module 03</h2>
+<ol>
+  <li><strong>Change the HTTP method.</strong> Edit
+      <code>traffic_generator.py</code> to send <code>HEAD</code> instead of
+      <code>GET</code>. Re-capture. Confirm the response has no body but
+      still has headers — map that difference to the layer it belongs to
+      (Application layer semantics, not something Ethernet/IP/TCP care
+      about at all).</li>
+  <li><strong>Break the handshake on purpose.</strong> Stop
+      <code>http_target_server.py</code>, then run
+      <code>traffic_generator.py</code> against the now-dead port. Capture
+      what happens — you should see your machine's kernel reply with a TCP
+      RST instead of a SYN-ACK, and your script should raise a
+      <code>ConnectionRefusedError</code>. This is what "closed port" looks
+      like at the packet level, foundational for Module 06's ping/traceroute
+      work and Module 16's port scanning.</li>
+  <li><strong>Add a 5th layer to <code>layer_builder.py</code>.</strong> Try
+      to justify adding a "Layer 6" header of your own invention between TCP
+      and HTTP. You'll find there's nowhere for a real NIC/OS to put it —
+      which is exactly the point: TCP/IP collapsed OSI's top 3 layers into
+      one, because in practice nothing ever needed them separated.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 03:</strong> you should be able to point at any byte
+in a Wireshark capture and say which layer it belongs to, without
+Wireshark's own labels. Module 03 zooms into that first 14-byte Ethernet
+header specifically — MAC addresses, ARP, and how switches use that header
+alone to move frames around a LAN.
+</div>
+
+</body>
+</html>
