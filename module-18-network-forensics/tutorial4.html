@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 18 — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 18 — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version, focused specifically on
+<code>incident_timeline.py</code>'s reconstruction logic (the libpcap
+byte format itself is covered exhaustively in tutorial2.html). By the
+end you should be able to trace every detector function by hand against
+the real synthetic incident, and explain precisely why each false-positive
+guard exists.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">The full incident, traced from build_incident() to timeline</a></li>
+<li><a href="#sec2">detect_recon() — traced completely against the real data</a></li>
+<li><a href="#sec3">annotate_packet() — why substring matching, precisely</a></li>
+<li><a href="#sec4">detect_exfiltration() — traced completely, including the false-positive guard</a></li>
+<li><a href="#sec5">Why chronological sort is itself part of the evidence</a></li>
+<li><a href="#sec6">The timestamp rounding bug, revisited precisely</a></li>
+<li><a href="#sec7">Full code walkthrough — build_timeline()'s assembly logic</a></li>
+<li><a href="#sec8">Many worked scenarios</a></li>
+<li><a href="#sec9">Troubleshooting and common confusions</a></li>
+<li><a href="#sec10">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. The Full Incident, Traced From build_incident() To Timeline</h2>
+
+<p>Before tracing the DETECTORS, get the GROUND TRUTH completely
+straight — exactly what <code>build_incident()</code> actually
+constructs, since this is what the detectors are meant to correctly
+rediscover from raw bytes alone.</p>
+
+<table>
+<tr><th>Phase</th><th>What actually happens</th><th>Timing</th></tr>
+<tr><td>1. Reconnaissance</td><td>Attacker (203.0.113.66) sends 6 SYN packets to victim (10.0.0.50), ports 21/22/80/443/3306/8080</td><td>0.05s apart, spanning ~0.3s total</td></tr>
+<tr><td>2. Exploit attempt</td><td>Attacker sends <code>"USER smiley:)\r\n"</code> to port 21 (FTP) — the real vsftpd 2.3.4 backdoor trigger; victim replies with a vsftpd banner</td><td>5 seconds after recon ends</td></tr>
+<tr><td>3. Exfiltration</td><td>Victim (now presumed compromised) sends 20 packets of 1400+ bytes each to a THIRD host (203.0.113.99), port 443</td><td>30 seconds after the exploit, 0.02s between packets</td></tr>
+</table>
+
+<h2 id="sec2">2. detect_recon() — Traced Completely Against The Real Data</h2>
+
+<pre>by_src_dst = defaultdict(list)
+for ts, p in packets_parsed:
+    if p["tcp_flags"] == 0x02:  # SYN only
+        by_src_dst[(p["src_ip"], p["dst_ip"])].append((ts, p["dst_port"]))</pre>
+
+<div class="scenario">
+<h4>Fully traced against the real 6-port scan</h4>
+<pre>Filtering for tcp_flags == 0x02 (SYN only, Module 02 Section 7's own
+flag-decoding technique) collects exactly the 6 Phase-1 packets:
+  by_src_dst[("203.0.113.66", "10.0.0.50")] = [
+    (t0+0.05, 21), (t0+0.10, 22), (t0+0.15, 80),
+    (t0+0.20, 443), (t0+0.25, 3306), (t0+0.30, 8080)
+  ]
+
+detect_recon()'s window check:
+  events.sort() -- already sorted by construction here, but sorted for
+  correctness regardless of input order
+  ports = {port for ts, port in events if ts - events[0][0] <= 1.0}
+    events[0][0] = t0+0.05 (the FIRST event's timestamp)
+    ALL 6 events are within 1.0 second of the first (max gap: 0.30-0.05=0.25s)
+    -> ports = {21, 22, 80, 443, 3306, 8080} -- all 6 included
+
+  len(ports) = 6 >= min_ports(4) -- FINDING generated:
+  "RECONNAISSANCE: 203.0.113.66 scanned 6 ports on 10.0.0.50
+   ([21, 22, 80, 443, 3306, 8080])"
+
+This EXACTLY matches this module's own real, tested output.</pre>
+</div>
+
+<div class="why">
+<strong>Why filter for SYN-only packets (<code>tcp_flags == 0x02</code>)
+specifically, rather than counting ANY packet touching a new port?</strong>
+A SYN-only packet, per Module 07's own state machine, represents the
+FIRST step of a connection ATTEMPT — exactly the signature of a
+SCANNING tool probing many ports without necessarily completing full
+connections to any of them. Counting packets with OTHER flag
+combinations (an established connection's data packets, for instance)
+would risk conflating legitimate, completed, MULTI-PACKET conversations
+with a scanner's characteristic "touch many ports, briefly" pattern —
+filtering specifically for the SYN-only signature isolates exactly the
+connection-ATTEMPT behavior that indicates reconnaissance, directly
+reusing Module 14's own port-scan detection principle, now applied to
+STATIC pcap data instead of a live connection log.
+</div>
+
+<h2 id="sec3">3. annotate_packet() — Why Substring Matching, Precisely</h2>
+
+<pre>KNOWN_BAD_PAYLOADS = {
+    b"smiley:)": "vsftpd 2.3.4 backdoor trigger string (CVE-2011-2523...)",
+}
+
+def annotate_packet(pkt, parsed) -> str:
+    for pattern, description in KNOWN_BAD_PAYLOADS.items():
+        if pattern in parsed["payload"]:
+            return f"EXPLOIT ATTEMPT -- payload matches known-bad pattern: {description}"
+    return None</pre>
+
+<div class="scenario">
+<h4>Precisely why b"smiley:)" IS found even though the real packet contains the LONGER string b"USER smiley:)\r\n"</h4>
+<pre>Python's `in` operator, applied to bytes objects, performs SUBSTRING
+containment testing -- b"smiley:)" in b"USER smiley:)\r\n" checks
+whether the SHORTER pattern appears ANYWHERE within the LONGER payload,
+not whether they're EQUAL. Since "USER smiley:)\r\n" genuinely CONTAINS
+"smiley:)" as a contiguous substring (positions 5 through 12), the
+match succeeds.
+
+This is the EXACT same technique Module 16's own vuln_db_matcher.py
+uses for banner matching (Section 5 of that module's own tutorial4.html)
+and Module 14's mini_ids_rules.py uses for its `content` field matching
+-- a recurring, genuinely important pattern-matching technique across
+THREE separate modules, all doing fundamentally the same "does this
+known-bad fragment appear anywhere in this larger blob of data" check.</pre>
+</div>
+
+<h2 id="sec4">4. detect_exfiltration() — Traced Completely, Including The False-Positive Guard</h2>
+
+<pre>if f["dst"] not in {"10.0.0.50"}:  # don't flag legitimate inbound-heavy
+                                     # traffic to the victim itself
+    events.append(...)</pre>
+
+<div class="scenario">
+<h4>Precisely what false positive this guard prevents</h4>
+<p>Without this check, ANY sufficiently large transfer TOWARD the victim
+(10.0.0.50) — including ENTIRELY LEGITIMATE traffic, like a large file
+being uploaded to a real, benign service the victim happens to run —
+would ALSO satisfy <code>detect_exfiltration()</code>'s generic
+"10+ packets to the same dst:port" criterion, since the detector's core
+logic makes NO distinction about which DIRECTION is actually suspicious
+based on the destination's ROLE in the incident alone. This module's own
+code comment is explicit about WHY 10.0.0.50 specifically is excluded:
+it's the KNOWN VICTIM in this scenario — traffic INBOUND to a victim
+receiving legitimate service traffic is categorically different from
+traffic OUTBOUND from a (possibly compromised) host to an UNFAMILIAR
+third party (203.0.113.99, per Phase 3's actual construction), which is
+the actual, real exfiltration signature this detector is meant to
+isolate.</p>
+</div>
+
+<div class="pitfall">
+<strong>A genuine, honest limitation worth recognizing:</strong> this
+exclusion is HARDCODED to the specific IP <code>"10.0.0.50"</code> —
+meaning this detector, exactly as written, only correctly avoids this
+false positive for THIS SPECIFIC synthetic scenario's victim address. A
+real, general-purpose exfiltration detector would need a more principled
+approach (e.g., distinguishing "traffic to a host inside your OWN
+network" from "traffic to an unfamiliar EXTERNAL host," per Module 09's
+own network-boundary reasoning, rather than hardcoding one specific
+excluded address) — recognizing this as a deliberate TEACHING
+simplification, not a production-ready general solution, is itself part
+of understanding this module's real, honest scope.
+</div>
+
+<h2 id="sec5">5. Why Chronological Sort Is Itself Part Of The Evidence</h2>
+
+<pre>events.sort(key=lambda e: e[0])</pre>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Why does build_timeline()
+collect findings from THREE SEPARATE, INDEPENDENTLY-RUN detector
+functions (recon, exploit annotation, exfiltration) and only THEN sort
+them together by timestamp, rather than simply printing each detector's
+results in its own separate section?" The chronological ORDER across
+ALL THREE finding types is itself meaningful evidentiary content, not
+just a presentation preference — confirming that reconnaissance
+genuinely PRECEDED the exploit attempt, which genuinely PRECEDED
+exfiltration, is what transforms three ISOLATED findings into one
+COHERENT causal narrative (a single attacker's progressive campaign)
+rather than three possibly-unrelated, coincidentally-co-occurring
+events. This directly matches this module's own tutorial2.html Section
+4's framing: forensic reconstruction is fundamentally a REASONING
+process (evidence → causally-ordered narrative), and the unified,
+timestamp-sorted merge across all three detector types is the specific
+mechanism that makes this module's own code actually PERFORM that
+reasoning, not just report three disconnected facts.
+</div>
+
+<h2 id="sec6">6. The Timestamp Rounding Bug, Revisited Precisely</h2>
+
+<pre>ts_sec = int(ts)
+ts_usec = round((ts - ts_sec) * 1_000_000)  # round, not truncate</pre>
+
+<div class="scenario">
+<h4>The exact numerical mismatch this module's own real build encountered</h4>
+<pre>Take ts = 1700000000.0499995 (a realistic floating-point timestamp
+value, arising naturally from repeated += 0.05 floating point addition):
+
+int(ts) = 1700000000  (truncates the fractional part entirely)
+fractional part: 0.0499995
+
+Python's int() truncation: int(0.0499995 * 1_000_000) = int(49999.5) = 49999
+Python's round(): round(0.0499995 * 1_000_000) = round(49999.5) = 50000
+  (Python's banker's rounding rounds 49999.5 to the nearest EVEN
+  integer, which happens to be 50000 here)
+
+A ONE-MICROSECOND discrepancy (49999 vs 50000) between a Python
+implementation using int() truncation and a JS implementation using
+Math.round() would produce genuinely DIFFERENT output bytes at this
+exact position in the file -- not visible to a human inspecting the
+capture in Wireshark (a 1-microsecond difference is imperceptible), but
+a REAL, byte-level mismatch that would fail a strict byte-for-byte
+comparison between the two language variants' output files.</pre>
+</div>
+<div class="why">
+<strong>Why does this module's own fix align BOTH languages to
+ROUNDING (not truncation), rather than the reverse?</strong> Rounding to
+the NEAREST microsecond is the more ACCURATE representation of the true
+underlying floating-point value — truncation systematically biases every
+timestamp's fractional part DOWNWARD, introducing a small but
+consistent, avoidable inaccuracy. Choosing the more mathematically
+correct approach (rounding) as the shared standard, rather than
+arbitrarily picking whichever behavior happened to be Python's original
+default, reflects a genuine "fix toward correctness, not toward
+whichever implementation existed first" engineering principle.
+</div>
+
+<h2 id="sec7">7. Full Code Walkthrough — build_timeline()'s Assembly Logic</h2>
+
+<pre>meta, packets = read_pcap(path)
+packets_parsed = [(pkt["ts"], parse_frame(pkt["frame"])) for pkt in packets]</pre>
+<p>This line performs the COMPLETE de-encapsulation Module 02 Section 3
+described (Ethernet → IP → TCP, layer by layer) for EVERY packet in the
+capture, UP FRONT, before any detection logic runs at all — producing a
+list of <code>(timestamp, parsed_fields)</code> tuples that every
+subsequent detector function operates on directly, without needing to
+re-parse raw bytes repeatedly. This is a genuinely sensible structural
+choice: parsing is a relatively expensive, one-time cost; running
+MULTIPLE detector functions against the SAME already-parsed data
+(rather than each detector independently re-parsing the raw pcap) avoids
+redundant work — the same "parse once, analyze many ways" principle
+underlying most real log-analysis pipeline designs, including Module 15's
+own Logstash filter stage operating on already-parsed events.</p>
+
+<h2 id="sec8">8. Many Worked Scenarios</h2>
+
+<div class="scenario">
+<h4>Scenario: would detect_recon() still fire if the attacker had waited 2 seconds between each SYN instead of 0.05?</h4>
+<pre>window_seconds=1.0 in detect_recon()'s default parameters.
+
+6 SYNs, 2 seconds apart: total span = 5 x 2.0 = 10 seconds.
+
+ports = {port for ts, port in events if ts - events[0][0] <= 1.0}
+  Only events within 1.0 SECOND of the FIRST event's timestamp qualify
+  -- with 2-second spacing, only the FIRST TWO ports (0s and 2s... wait,
+  2s already exceeds 1.0s) -- actually only the FIRST port itself
+  (0 seconds elapsed) would be included; the SECOND port (at +2.0s)
+  already exceeds the 1.0s window.
+
+Result: len(ports) = 1, far below min_ports(4) -- NO finding generated.
+
+This demonstrates a genuine, real limitation worth understanding: a
+DELIBERATELY SLOW ("low and slow") scan, spread out specifically to
+evade tight timing-window detection, would NOT be caught by this
+detector as currently configured -- directly connecting to Module 14's
+own tutorial4.html discussion of detection SCOPE limitations, now
+demonstrated concretely against this module's own real detector logic.</pre>
+</div>
+
+<h2 id="sec9">9. Troubleshooting And Common Confusions</h2>
+
+<div class="pitfall">
+<strong>Common mistake: assuming build_timeline() would correctly
+reconstruct an incident with a DIFFERENT structure than this module's
+own synthetic example (different port counts, different timing,
+different exfiltration destination).</strong> Every detector's default
+parameters (<code>window_seconds=1.0</code>, <code>min_ports=4</code>,
+<code>min_packets=10</code>) and the hardcoded victim-exclusion address
+(<code>"10.0.0.50"</code>) were chosen SPECIFICALLY to correctly
+reconstruct THIS module's own particular synthetic scenario. Applying
+this exact code, unmodified, against a genuinely DIFFERENT real
+incident (different IP addressing, different attack timing) would very
+likely require adjusting these parameters — this is a real, honest
+characteristic of ALL the detection logic across this course (Module 14
+included): thresholds tuned for one scenario are a STARTING POINT for a
+new one, never a universal, parameter-free solution.
+</div>
+
+<h2 id="sec10">10. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 19, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Trace <code>detect_recon()</code>'s window logic by hand against a
+given sequence of SYN packets with real timestamps.</li>
+<li>Explain why substring matching (not exact equality) is the correct
+technique for <code>annotate_packet()</code>'s known-bad pattern
+check.</li>
+<li>Explain precisely what false positive the hardcoded victim-address
+exclusion in <code>detect_exfiltration()</code> prevents, and its
+honest limitation as a hardcoded (not general) solution.</li>
+<li>Explain why sorting all three finding types together by timestamp
+is itself part of the forensic REASONING, not just formatting.</li>
+<li>Recompute the int()-vs-round() timestamp discrepancy this module's
+own real build hit, showing the exact microsecond-level mismatch.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 19's capstone explicitly asks you to reconstruct a
+simulated incident forensically, reusing exactly this module's own
+approach on a network YOU built and attacked yourself.</p>
+
+</body>
+</html>

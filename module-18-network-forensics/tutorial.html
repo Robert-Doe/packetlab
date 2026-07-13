@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 18 Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 18 — Tutorial</h1>
+<p>Goal: build a genuinely valid .pcap file from scratch, then reconstruct
+a full incident narrative from it — reconnaissance, exploit, exfiltration
+— purely by parsing the raw capture, the way a real incident responder
+works from evidence after the fact.</p>
+
+<h2>Step 1 — build a real incident capture</h2>
+<pre>cd module-18-network-forensics
+python pcap_writer.py</pre>
+<div class="expect"><strong>Expected:</strong> <code>incident.pcap</code>
+is created with 28 packets. Confirmed during this module's build with the
+independent <code>file</code> command-line utility (no relation to this
+course's code): <code>file incident.pcap</code> reports
+<code>"pcap capture file, microseconds ts (big-endian) - version 2.4
+(Ethernet, capture length 65535)"</code> — genuine, external validation
+that this is a real, standards-conformant capture file, not a
+course-specific format.</div>
+
+<h2>Step 2 — open it in real Wireshark</h2>
+<p>Open <code>incident.pcap</code> directly in Wireshark.</p>
+<div class="expect"><strong>Expected:</strong> Wireshark displays all 28
+packets normally — source/dest IPs, TCP flags, and payload content exactly
+as this module built them. Use <strong>Follow → TCP Stream</strong> on the
+FTP exchange (packets around the 5-second mark) to see the
+<code>USER smiley:)</code> trigger string and the vsftpd banner reply in
+context, exactly like Module 14's Wireshark checklist taught.</div>
+
+<h2>Step 3 — parse it back with your own code</h2>
+<pre>python pcap_reader.py incident.pcap</pre>
+<div class="expect"><strong>Expected:</strong> every packet's timestamp,
+addresses, ports, flags, and payload preview printed — confirmed during
+this module's build to exactly match what was written, byte for byte
+(the reconnaissance SYNs, the exploit payload, all 20 exfiltration
+packets).</div>
+
+<h2>Step 4 — reconstruct the full incident timeline</h2>
+<pre>python incident_timeline.py incident.pcap</pre>
+<div class="expect"><strong>Expected:</strong> exactly 3 lines:
+a RECONNAISSANCE finding (6 ports scanned within 1 second), an EXPLOIT
+ATTEMPT finding (matching Module 16's real CVE-2011-2523 vsftpd trigger
+string), and an EXFILTRATION finding (20 packets, ~28KB, to a third-party
+host) — in correct chronological order, with real elapsed-time offsets.
+This is the entire job of Module 14's detection logic (port-scan and
+large-transfer patterns) applied retrospectively to a static capture
+instead of live traffic.</div>
+
+<h2>Step 5 — cross-language and Node</h2>
+<pre>node pcap_writer.js
+node pcap_reader.js incident_node.pcap
+node incident_timeline.js incident_node.pcap</pre>
+<div class="expect"><strong>Expected:</strong> byte-identical output to
+the Python variants at every stage — confirmed during this module's build,
+including the generated .pcap files themselves being byte-for-byte
+identical once both languages used the same timestamp-rounding approach
+(a real cross-language porting detail worth noticing).</div>
+
+<h2>Exercises before Module 19</h2>
+<ol>
+  <li><strong>Add a 4th phase: lateral movement.</strong> Extend
+      <code>pcap_writer.py</code>/<code>.js</code> with a phase where the
+      "victim" host connects to a SECOND internal host after being
+      compromised — the classic "attacker pivots deeper into the network"
+      pattern. Add detection logic to <code>incident_timeline.py</code>/<code>.js</code>
+      for this new phase.</li>
+  <li><strong>Reconstruct a real capture from an earlier module.</strong>
+      Take any Wireshark <code>.pcap</code> you saved from Modules 02, 07,
+      or 08, and run <code>pcap_reader.py</code> against it directly.
+      Confirm your hand-rolled parser correctly reads a file it never saw
+      during development — real evidence your parsing logic is generically
+      correct, not just fitted to this module's own synthetic data.</li>
+  <li><strong>Write an incident report.</strong> Using
+      <code>incident_timeline.py</code>'s output as your evidence, write a
+      2-3 paragraph incident report in plain English: what happened, in
+      what order, and what specific evidence (packet numbers, timestamps,
+      payload contents) supports each claim. This is the actual deliverable
+      a real incident responder produces — the technical timeline is the
+      input, not the output.</li>
+</ol>
+
+<div class="note">
+<strong>Before Module 19:</strong> you should be able to explain the
+libpcap file format's structure from memory (global header, then repeated
+packet records) and be comfortable reconstructing a chronological incident
+narrative from raw packet data alone. Module 19 is the capstone — designing,
+building, attacking, and defending a full segmented home-lab network,
+drawing on every module from 01 through 18.
+</div>
+
+</body>
+</html>

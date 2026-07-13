@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 18 — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 18 — Deep Theory: The libpcap File Format and Forensic Reconstruction, From Zero</h1>
+
+<h2>1. Command-by-Command</h2>
+
+<h3><code>python pcap_writer.py</code></h3>
+<p><strong>What it does:</strong> constructs a real, standards-conformant
+<code>.pcap</code> file byte-by-byte — first a 24-byte GLOBAL HEADER,
+then one PACKET RECORD per captured frame, each consisting of its own
+small header followed by the raw Ethernet frame bytes. Nothing here calls
+an actual capture library — the "capture" is entirely synthetic, built
+the same way Module 02's <code>layer_builder.py</code> built raw frames
+by hand with <code>struct.pack</code>, just written to disk in the exact
+binary layout Wireshark itself expects.</p>
+
+<h3><code>file incident.pcap</code></h3>
+<p><strong>What it does:</strong> the Unix/Linux <code>file</code>
+utility inspects a file's leading bytes (its "magic number") against a
+database of known formats and reports what it recognizes — entirely
+independent of anything in this course. That it correctly identifies
+<code>incident.pcap</code> as a genuine pcap capture file is external,
+disinterested proof the hand-written binary format is actually correct,
+not merely "close enough that this course's own reader accepts it."</p>
+
+<h3><code>python pcap_reader.py incident.pcap</code></h3>
+<p><strong>What it does:</strong> the REVERSE of the writer — opens the
+file, parses the 24-byte global header first (confirming the magic
+number and extracting the byte-order/timestamp-precision settings it
+declares), then loops reading one packet record header (16 bytes) plus
+that record's declared number of captured bytes, repeating until EOF.</p>
+
+<h3><code>python incident_timeline.py incident.pcap</code></h3>
+<p><strong>What it does:</strong> applies Module 14's detection logic
+(port-scan pattern matching, large-transfer/exfiltration pattern
+matching) RETROSPECTIVELY to a static, already-complete capture file,
+rather than to a live stream — the exact same statistical reasoning,
+applied after the fact instead of in real time. This is precisely what
+distinguishes forensics (reconstructing what already happened from
+surviving evidence) from monitoring (detecting what's happening now).</p>
+
+<h2>2. The libpcap Global Header, Byte by Byte</h2>
+<p>Every valid <code>.pcap</code> file begins with exactly this 24-byte
+structure:</p>
+<table>
+<tr><th>Bytes</th><th>Field</th><th>Purpose</th></tr>
+<tr><td>0–3</td><td>Magic number</td><td><code>0xa1b2c3d4</code> (or its byte-swapped form <code>0xd4c3b2a1</code>) — this single field is BOTH a format signature AND a self-describing byte-order flag: a reader that sees the swapped value knows the whole file was written on a machine with the opposite endianness and must byte-swap every subsequent multi-byte field</td></tr>
+<tr><td>4–5</td><td>Major version</td><td>Format version, currently 2</td></tr>
+<tr><td>6–7</td><td>Minor version</td><td>Format version, currently 4</td></tr>
+<tr><td>8–11</td><td>Reserved (timezone, historically)</td><td>Effectively always 0 in modern captures</td></tr>
+<tr><td>12–15</td><td>Reserved (timestamp accuracy, historically)</td><td>Effectively always 0 in modern captures</td></tr>
+<tr><td>16–19</td><td>Snaplen</td><td>Maximum number of bytes captured per packet (65535 here — "capture everything," per Step 1's own `file` output)</td></tr>
+<tr><td>20–23</td><td>Link-layer type</td><td>What kind of frame follows each packet record — 1 means Ethernet, the same numbering scheme this module's writer declares explicitly</td></tr>
+</table>
+<div class="why">
+<strong>Why encode byte order via a magic-number self-check, rather than
+a separate explicit "byte order" field?</strong> A dedicated byte-order
+field would ITSELF need to be read correctly before you'd know how to
+interpret it — a chicken-and-egg problem. Using the magic number
+double-duty (a fixed, known value that LOOKS different depending on
+which byte order produced it) sidesteps this entirely: a reader tries
+interpreting the first 4 bytes as-is, and if they don't match
+<code>0xa1b2c3d4</code>, tries the byte-swapped interpretation instead —
+whichever matches tells the reader definitively which byte order the
+rest of the file uses, with no additional field needed.
+</div>
+
+<h2>3. The Packet Record Format</h2>
+<p>After the global header, each captured packet is stored as its own
+16-byte record header followed by the raw captured bytes:</p>
+<table>
+<tr><th>Bytes</th><th>Field</th><th>Purpose</th></tr>
+<tr><td>0–3</td><td>Timestamp (seconds)</td><td>Unix epoch seconds when this packet was captured</td></tr>
+<tr><td>4–7</td><td>Timestamp (microseconds)</td><td>Sub-second precision — this is exactly the field whose Python <code>int()</code>-truncation vs. JS <code>Math.round()</code> rounding mismatch caused this module's cross-language byte-mismatch bug, fixed by aligning both languages to the same rounding rule</td></tr>
+<tr><td>8–11</td><td>Captured length</td><td>How many bytes of this packet were ACTUALLY stored (may be less than the original frame if snaplen truncated it)</td></tr>
+<tr><td>12–15</td><td>Original length</td><td>How large the frame actually was on the wire, even if truncated</td></tr>
+</table>
+<div class="brain">
+<strong>Brain power:</strong> why store BOTH a captured length and an
+original length, rather than just one "length" field? These can
+legitimately differ: a capture tool configured with a small snaplen (say,
+only the first 96 bytes of each packet, common when you only care about
+headers, not payload, to save disk space) stores fewer bytes than the
+packet actually contained on the wire. Preserving the ORIGINAL length
+even when truncated lets later analysis still report accurate
+statistics (real payload sizes, real total traffic volume) even though
+the payload bytes themselves aren't available for deeper inspection.
+</div>
+
+<h2>4. Forensic Reconstruction as a Reasoning Process</h2>
+<p><code>incident_timeline.py</code>'s 3-finding output is not
+magic — it is the same evidence-to-conclusion reasoning any incident
+responder performs manually, automated: cluster the reconnaissance SYNs
+by (a) common source, (b) tight time window, (c) many distinct
+destination ports — Module 14's own port-scan signature, applied to
+already-captured packets. Find the payload matching a known exploit
+trigger string (Module 16's CVE-2011-2523 signature) to mark the
+transition from reconnaissance to active exploitation. Find a
+sustained, high-volume transfer to a THIRD-PARTY address (not the
+original two hosts) to mark exfiltration. The chronological ORDER of
+these three findings is itself part of the evidence — reconnaissance
+must precede exploitation must precede exfiltration for the narrative to
+be coherent, and a forensic report should say so explicitly.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>libpcap global header / packet record format</td><td>Reading ANY real .pcap file with custom tooling, a core skill for security research</td></tr>
+<tr><td>Magic-number self-describing byte order</td><td>General binary file format literacy, echoes Module 02/07's endianness theory</td></tr>
+<tr><td>Retrospective application of Module 14's detection logic</td><td>Module 19's capstone incident analysis requirement</td></tr>
+<tr><td>Evidence-to-narrative reasoning</td><td>Writing a real incident report, the actual deliverable of forensic work</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>

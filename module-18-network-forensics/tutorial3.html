@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 18 — Exam Practice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 24px; line-height: 1.6; color: #1a1a1a; }
+  h1 { border-bottom: 4px solid #222; padding-bottom: 10px; }
+  details { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+  summary { font-weight: 600; cursor: pointer; }
+  .answer { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; font-family: "SFMono-Regular", Consolas, monospace; }
+  nav a { margin-right: 16px; }
+  .instructions { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">← Deep Theory</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 18 — Exam Practice</h1>
+<div class="instructions">Cover the answer before reading it. Click Show answer only after you've committed to what you'd actually say.</div>
+
+<details>
+<summary>Q1. Describe the two-level structure of a .pcap file: what comes first, and what repeats.</summary>
+<div class="answer">
+<strong>A:</strong> A single 24-byte GLOBAL HEADER comes first (magic
+number, version, snaplen, link-layer type), describing properties that
+apply to the ENTIRE file. After that, PACKET RECORDS repeat for every
+captured packet until end of file -- each record is its own 16-byte
+per-packet header (timestamp, captured length, original length)
+immediately followed by that many bytes of the actual captured frame.
+</div>
+</details>
+
+<details>
+<summary>Q2. How does a pcap reader determine the byte order of the rest of the file, given that determining byte order itself requires reading multi-byte data?</summary>
+<div class="answer">
+<strong>A:</strong> Via the magic number's dual role: it's a FIXED,
+universally known value (0xa1b2c3d4). A reader tries interpreting the
+first 4 bytes in native byte order; if the result doesn't match the
+known magic number, it tries the byte-swapped interpretation instead
+(which would then read as 0xd4c3b2a1 originally). Whichever
+interpretation produces the correct magic number tells the reader
+definitively which byte order the rest of the file uses -- no separate,
+independently-interpreted "byte order" field is needed, sidestepping the
+chicken-and-egg problem entirely.
+</div>
+</details>
+
+<details>
+<summary>Q3. Why does each packet record store BOTH a captured length and an original length, rather than a single length field?</summary>
+<div class="answer">
+<strong>A:</strong> These can legitimately differ when a capture tool is
+configured with a snaplen smaller than a full packet (e.g., only
+capturing the first 96 bytes of each packet to save disk space while
+still recording header information). The captured length says how many
+bytes were actually stored; the original length preserves the packet's
+true on-the-wire size even when truncated, letting later traffic-volume
+statistics remain accurate even though the full payload isn't available
+for inspection.
+</div>
+</details>
+
+<details>
+<summary>Q4. Why does incident_timeline.py's logic being described as "the same as Module 14's, applied retrospectively" matter, rather than being a completely new detection approach?</summary>
+<div class="answer">
+<strong>A:</strong> It demonstrates that the underlying STATISTICAL
+REASONING (what makes a set of packets look like a port scan or an
+exfiltration event) doesn't depend on whether the analysis happens live
+or after the fact -- only the operational context differs (monitoring:
+detect and alert on ongoing traffic; forensics: reconstruct a narrative
+from a fixed, complete, already-captured dataset). Reusing the same
+detection logic in both contexts is evidence the logic is genuinely
+measuring something real about the traffic pattern, not an artifact of
+how or when it's applied.
+</div>
+</details>
+
+<details>
+<summary>Q5. Why does the chronological ORDER of the three findings (reconnaissance, exploit, exfiltration) function as evidence in its own right, not just a presentation choice?</summary>
+<div class="answer">
+<strong>A:</strong> A coherent attack narrative has a causal structure --
+reconnaissance (discovering what's open) must precede exploitation
+(attacking a discovered service) must precede exfiltration (using
+access gained by exploitation to extract data). Confirming the observed
+timestamps actually respect this causal ordering is itself corroborating
+evidence that the three findings represent ONE connected incident by
+one actor, rather than three coincidentally co-occurring but unrelated
+events -- an incident report that only lists findings without confirming
+their temporal/causal consistency would be a materially weaker analysis.
+</div>
+</details>
+
+<details>
+<summary>Q6. Why does the `file` command-line utility's identification of incident.pcap matter as validation, given it has no connection to this course's code at all?</summary>
+<div class="answer">
+<strong>A:</strong> Because it has NO connection to this course's code,
+its verdict is disinterested, external evidence -- it cannot be
+"fitted" or coincidentally agree with the writer's own assumptions the
+way a self-test written by the same author might. A completely
+independent, general-purpose tool correctly recognizing the file's
+format is stronger evidence of genuine standards-conformance than any
+self-check this module's own reader could provide, since the reader and
+writer share the same author and could share the same misunderstanding.
+</div>
+</details>
+
+<details>
+<summary>Q7. Synthesis: this module's Exercise 2 asks you to run pcap_reader.py against a .pcap saved from an earlier module (e.g., Module 07 or 08). Why is a parser succeeding on a completely different module's captured file meaningful evidence, beyond just "it worked again"?</summary>
+<div class="answer">
+<strong>A:</strong> This module's own pcap_writer.py and pcap_reader.py
+were developed together, by the same process, against the same
+synthetic data -- success there only proves internal self-consistency,
+which could mask a shared misunderstanding of the real format (the
+writer and reader could agree with each other while both being wrong
+about the actual libpcap spec). Successfully parsing a file the reader
+never saw during development, produced by an entirely different
+generation path (real Wireshark-compatible output from earlier modules),
+is genuine evidence the parsing logic is CORRECT against the real
+external format, not merely fitted to this module's own test data --
+the same generalization principle Module 16's true-negative test
+demonstrated for its vulnerability matcher.
+</div>
+</details>
+
+</body>
+</html>
