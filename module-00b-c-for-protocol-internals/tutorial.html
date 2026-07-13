@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00b Tutorial</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #222; padding-bottom: 8px; }
+  h2 { margin-top: 36px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; }
+  .expect { background: #eaf6ea; border-left: 4px solid #27ae60; padding: 10px 14px; margin: 14px 0; }
+  .note { background: #fff8e1; border-left: 4px solid #f5a623; padding: 10px 14px; margin: 14px 0; }
+  .warn { background: #fdecec; border-left: 4px solid #c0392b; padding: 10px 14px; margin: 14px 0; }
+  code { background: #eee; padding: 1px 5px; border-radius: 3px; }
+  ol > li { margin-bottom: 10px; }
+  nav a { margin-right: 16px; }
+</style>
+</head>
+<body>
+
+<nav><a href="headfirst.md">Concepts</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 00b — Tutorial</h1>
+<p>Goal: compile and run real C, see exactly what Python's <code>struct</code>
+and Node's <code>Buffer</code> are doing underneath, and watch a real
+buffer overflow corrupt memory — safely, in a sandbox, purely to
+understand why the bug class exists.</p>
+
+<div class="note">
+<strong>You need a C compiler.</strong> On Windows, the easiest path is
+WSL (Windows Subsystem for Linux) with Ubuntu — <code>wsl --install</code>
+if you don't have it, then <code>sudo apt install gcc</code> inside it.
+Every command below assumes you're running from inside a Linux shell
+(WSL, or any real Linux/Mac machine).
+</div>
+
+<h2>Step 1 — the exact same protocol bytes, in C</h2>
+<pre>cd module-00b-c-for-protocol-internals
+gcc -Wall -o protocol_struct protocol_struct.c
+./protocol_struct</pre>
+<div class="expect"><strong>Expected:</strong> <code>sizeof()</code>
+confirms each packed struct is exactly the byte count the protocol spec
+requires (14/20/20), and the printed hex — confirmed during this module's
+build — is byte-for-byte identical to Module 02's Python
+<code>layer_builder.py</code> output for the same logical values
+(<code>aa bb cc 00 00 01 aa bb cc 00 00 02 08 00</code> for the Ethernet
+header, etc.). Same protocol, two completely different languages,
+identical wire bytes.</div>
+
+<h2>Step 2 — pointers, made visible</h2>
+<pre>gcc -Wall -o pointers_and_memory pointers_and_memory.c
+./pointers_and_memory</pre>
+<div class="expect"><strong>Expected:</strong> real memory addresses
+printed (yours will differ from any example), and confirmation that
+<code>&numbers[1]</code> sits exactly 4 bytes after <code>&numbers[0]</code>
+— proving array indexing really is pointer arithmetic, not a separate
+mechanism. The final section shows a function writing INTO a buffer the
+caller owns, exactly the pattern <code>recv()</code> uses.</div>
+
+<h2>Step 3 — a real buffer overflow, two ways</h2>
+<pre>gcc -Wall -o overflow_protected buffer_overflow_demo.c
+./overflow_protected</pre>
+<div class="expect"><strong>Expected (confirmed during this module's
+build):</strong> the program prints its progress, then aborts with
+<code>*** stack smashing detected ***: terminated</code>. Notice
+<code>adjacent_guard</code> printed UNCHANGED (<code>0x1234</code>) both
+before and after the overflow — modern GCC's stack protector doesn't just
+add a canary value, it also <strong>reorders local variables</strong> to
+keep buffers away from scalars specifically to prevent this kind of
+adjacent-variable corruption. The corruption still happened — just to the
+compiler's own hidden canary, not to your visible variable — which is
+exactly what triggered the abort.</div>
+
+<pre>gcc -Wall -fno-stack-protector -o overflow_unprotected buffer_overflow_demo.c
+./overflow_unprotected</pre>
+<div class="expect"><strong>Expected (confirmed during this module's
+build):</strong> <code>adjacent_guard</code> now shows
+<code>0x41414141</code> after the copy — literally the ASCII bytes for
+<code>"AAAA"</code>, the overflowing input, having spilled directly into
+adjacent memory. The program then segfaults shortly after, because the
+overflow kept going past <code>adjacent_guard</code> and corrupted the
+function's saved stack metadata too.</div>
+
+<div class="warn">
+This demonstrates memory CORRUPTION — a crash, and visibly clobbered
+adjacent data. It does not construct a working exploit (no shellcode, no
+control-flow hijack to attacker-chosen code). That's a meaningfully
+different, further topic than this module covers.
+</div>
+
+<h2>Step 4 — the memory-safe contrast</h2>
+<pre>node memory_safety_contrast.js</pre>
+<div class="expect"><strong>Expected:</strong> Node's
+<code>Buffer.write()</code> silently truncates an oversized write (no
+crash, no corruption, buffer length unchanged) while
+<code>Uint8Array.set()</code> throws a catchable <code>RangeError</code>
+instead — two different but both SAFE behaviors, neither of which is "let
+it silently corrupt whatever memory happens to be next," which is what
+C's <code>strcpy()</code> just did.</div>
+
+<h2>Exercises before Module 00c</h2>
+<ol>
+  <li><strong>Replace strcpy() with strncpy() and confirm the fix.</strong>
+      Modify <code>buffer_overflow_demo.c</code> to use
+      <code>strncpy(small_buffer, attacker_controlled_input, sizeof(small_buffer) - 1)</code>
+      instead, and null-terminate manually. Confirm the overflow no longer
+      happens, even with <code>-fno-stack-protector</code>.</li>
+  <li><strong>Add IP/TCP checksum computation to protocol_struct.c.</strong>
+      Port Module 02's <code>checksum16()</code> algorithm to C and
+      confirm the resulting checksum matches Python's output for the same
+      header bytes.</li>
+  <li><strong>Read tutorial2.html and tutorial3.html fully</strong> before
+      moving on — the stack-frame-layout theory and exam questions live
+      there.</li>
+</ol>
+
+</body>
+</html>

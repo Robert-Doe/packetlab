@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00b — Complete Mastery Guide</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 880px; margin: 40px auto; padding: 0 24px; line-height: 1.7; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 56px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 32px; color: #222; }
+  h4 { font-family: system-ui, sans-serif; margin-top: 22px; color: #444; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.9rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario { background: #fff9f0; border: 1px solid #e8c99a; border-left: 5px solid #d98324; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .scenario h4 { margin-top: 0; color: #a15c0a; }
+  .pitfall { background: #fdf0f0; border-left: 5px solid #b3261e; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+  .toc { background: #f7f7f9; border: 1px solid #ddd; border-radius: 8px; padding: 16px 22px; font-family: system-ui, sans-serif; font-size: 0.95rem; }
+  .toc li { margin-bottom: 4px; }
+  .recap { background: #f0f4ff; border: 2px solid #4c51bf; border-radius: 8px; padding: 14px 18px; margin: 20px 0; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial2.html">Deep Theory</a> <a href="tutorial3.html">Exam Practice</a></nav>
+
+<h1>Module 00b — Complete Mastery Guide</h1>
+
+<p>This is the exhaustive version. By the end, you should be able to draw
+a byte-by-byte memory layout diagram for any of this module's structs
+from memory, explain exactly why <code>strcpy()</code> corrupts adjacent
+memory (not "it's dangerous" — the actual mechanical WHY), and narrate
+what a stack canary is protecting against and how it detects tampering.</p>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol>
+<li><a href="#sec1">What memory actually is — RAM, addresses, and bytes</a></li>
+<li><a href="#sec2">Pointers, from absolute zero, with many scenarios</a></li>
+<li><a href="#sec3">Structs, padding, and alignment — full byte-offset diagrams</a></li>
+<li><a href="#sec4">Endianness — htons/htonl traced byte by byte</a></li>
+<li><a href="#sec5">The stack, in complete detail — what a "stack frame" physically is</a></li>
+<li><a href="#sec6">The buffer overflow — traced byte by byte, twice</a></li>
+<li><a href="#sec7">Stack canaries — what they detect and how</a></li>
+<li><a href="#sec8">strcpy vs. strncpy vs. snprintf — precisely</a></li>
+<li><a href="#sec9">Full code walkthrough — protocol_struct.c</a></li>
+<li><a href="#sec10">Full code walkthrough — buffer_overflow_demo.c</a></li>
+<li><a href="#sec11">Troubleshooting and common confusions</a></li>
+<li><a href="#sec12">Comprehensive recap and self-test</a></li>
+</ol>
+</div>
+
+<h2 id="sec1">1. What Memory Actually Is — RAM, Addresses, and Bytes</h2>
+
+<p>Before pointers make any sense, get the physical picture solid. Your
+computer's RAM (Random Access Memory) is, conceptually, one enormous
+array of BYTES — literally billions of them, each one holding a number
+from 0 to 255 (Module 00a Section 2.3 — exactly what an 8-bit value can
+represent). Every single byte in this giant array has a unique numeric
+ADDRESS — its position in the array, exactly the way every house on a
+street has a unique address. "Random Access" specifically means the CPU
+can jump directly to ANY address in roughly constant time — unlike, say,
+a tape you'd have to wind through sequentially.</p>
+
+<p>When a C program declares <code>int x = 5;</code>, what ACTUALLY
+happens: the compiler reserves some number of consecutive bytes (4, for
+a typical <code>int</code>) somewhere in this giant array, and
+"<code>x</code>" becomes a human-readable NAME the compiler uses, at
+compile time, to remember which specific address those 4 bytes start at.
+At runtime, there is no "x" anywhere in memory — only 4 bytes at some
+specific address, holding the bit pattern for the number 5.</p>
+
+<div class="brain">
+<strong>Brain power:</strong> if variable names don't exist at runtime,
+only addresses and bytes, what is a POINTER, at the most basic level?
+A pointer is simply a variable whose VALUE is an address — a number
+identifying WHERE some other data lives in that giant byte array,
+rather than being the data itself. Section 2 makes this completely
+concrete with real, runnable code.
+</div>
+
+<h2 id="sec2">2. Pointers, From Absolute Zero, With Many Scenarios</h2>
+
+<h3>2.1 — Declaring and using a pointer, mechanically</h3>
+<pre>int x = 5;
+int *p = &x;   /* p now HOLDS the address of x */
+
+printf("%d\n", x);    // 5           -- the VALUE stored at x's address
+printf("%p\n", (void*)&x);  // e.g. 0x7ffee3a1c  -- x's ADDRESS itself
+printf("%p\n", (void*)p);   // e.g. 0x7ffee3a1c  -- SAME address, now held in p
+printf("%d\n", *p);   // 5           -- DEREFERENCING p: "go to the address p holds, read what's there"</pre>
+<p>Three distinct operators are doing three distinct jobs here:
+<code>&x</code> ("address-of") asks "where does x live?" and produces an
+address. <code>int *p</code> declares a variable whose type is
+"pointer to int" — meaning it's meant to HOLD an address of somewhere
+an <code>int</code> lives. <code>*p</code> ("dereference") means "go to
+the address stored in p, and treat whatever is there as an int" —
+reading (or writing) the actual data, not the address.</p>
+
+<div class="scenario">
+<h4>Worked scenario: modifying a variable through a pointer, traced step by step</h4>
+<pre>int x = 5;
+int *p = &x;
+*p = 99;              // "go to the address p holds, and STORE 99 there"
+printf("%d\n", x);    // prints 99 -- x itself changed!</pre>
+<p>This is not magic and not "aliasing" in some mysterious sense — <code>p</code>
+holds the EXACT SAME address <code>x</code> lives at, so writing through
+<code>*p</code> writes to the exact same bytes that reading <code>x</code>
+reads from. There is only ONE piece of memory involved the whole time;
+<code>x</code> and <code>*p</code> are two different NAMES for accessing
+the identical bytes.</p>
+</div>
+
+<h3>2.2 — Array indexing IS pointer arithmetic</h3>
+<p>This module's own <code>pointers_and_memory.c</code> proves
+something most beginners are simply told to accept: <code>numbers[1]</code>
+and <code>*(numbers + 1)</code> are not just similar — they are
+LITERALLY the same operation, and the compiler treats
+<code>numbers[i]</code> as pure syntactic sugar for
+<code>*(numbers + i)</code>.</p>
+
+<div class="scenario">
+<h4>Worked scenario: proving array indexing is pointer arithmetic, with real addresses</h4>
+<pre>int numbers[3] = {10, 20, 30};
+
+printf("%p\n", (void*)&numbers[0]);   // e.g. 0x7ffee3a1c0
+printf("%p\n", (void*)&numbers[1]);   // e.g. 0x7ffee3a1c4  <- exactly 4 bytes later
+printf("%p\n", (void*)&numbers[2]);   // e.g. 0x7ffee3a1c8  <- exactly 4 bytes later again</pre>
+<p>Each address is exactly 4 bytes after the previous one — because
+<code>sizeof(int) == 4</code> on this platform, and
+<code>numbers + 1</code> doesn't mean "add 1 to the address's raw
+number" — it means "advance by 1 ELEMENT of whatever type this pointer
+points to," which the compiler automatically translates into "add
+<code>1 × sizeof(int)</code> bytes." This is precisely why pointer
+arithmetic is TYPE-AWARE: <code>char *</code> arithmetic advances 1
+byte per step, <code>int *</code> arithmetic advances 4 bytes per step,
+and a <code>struct ipv4_header *</code> (Section 3) would advance a full
+20 bytes per step — all from the exact same <code>+1</code> syntax.</p>
+</div>
+
+<div class="why">
+<strong>Why does this matter for understanding <code>recv()</code>-style
+network code (this module's own
+<code>simulate_recv_into_buffer()</code> pattern)?</strong> A function
+that "writes incoming network data into a buffer the CALLER owns" is
+using EXACTLY this mechanism: the caller passes a POINTER to some memory
+it already allocated (an address), and the function writes bytes
+starting at that address, advancing byte by byte as data arrives. No
+"array" object is ever passed around — only an address and, critically,
+a SEPARATE size parameter telling the function how many bytes of space
+actually exist at that address (Section 6 covers exactly what happens
+when that size parameter is missing or ignored).
+</div>
+
+<h3>2.3 — What a "null pointer" and "dangling pointer" actually are</h3>
+<div class="scenario">
+<h4>Scenario: the difference between a pointer that points nowhere, and one that points somewhere INVALID</h4>
+<p>A NULL pointer (<code>int *p = NULL;</code>) holds the special
+address value 0, by convention meaning "intentionally points to
+nothing." Dereferencing it (<code>*p</code>) is undefined behavior — most
+commonly, on a real OS, this triggers a segmentation fault (the OS
+detects the program trying to access address 0, which it has deliberately
+never mapped to any real memory precisely so this mistake is loud and
+immediate rather than silent).</p>
+<p>A DANGLING pointer is different and more dangerous: it holds the
+address of memory that WAS valid but has since been freed or gone out of
+scope — the pointer variable itself hasn't changed, but what it points
+to is no longer legitimately yours to read or write. Dereferencing a
+dangling pointer might crash, might silently read garbage leftover data,
+or (worst case) might read or corrupt memory that's since been
+reallocated for something completely different — a real, serious bug
+class in C and C++ (this course doesn't build a dangling-pointer demo
+directly, but recognizing the distinction from a null pointer is a real,
+frequently-tested concept).</p>
+</div>
+
+<h2 id="sec3">3. Structs, Padding, and Alignment — Full Byte-Offset Diagrams</h2>
+
+<h3>3.1 — Why structs need <code>__attribute__((packed))</code> at all</h3>
+<p>By DEFAULT, a C compiler is free to insert invisible PADDING bytes
+between struct fields, to align each field to an address that's a
+multiple of its own size — because many CPUs access aligned data faster
+(and some older/embedded CPUs cannot access misaligned data at all).
+This default is a PERFORMANCE optimization for ordinary in-memory data
+structures — but it is exactly WRONG for network protocol headers, which
+define an EXACT byte layout with zero slack, specified by a standards
+document (an RFC), not by whatever your particular CPU finds convenient.</p>
+
+<div class="scenario">
+<h4>Worked scenario: what protocol_struct.c's ethernet_header would look like WITHOUT packing</h4>
+<pre>struct ethernet_header {       // WITHOUT __attribute__((packed))
+    uint8_t  dst_mac[6];       // 6 bytes, offset 0-5
+    uint8_t  src_mac[6];       // 6 bytes, offset 6-11
+    uint16_t ethertype;        // needs 2-byte alignment --
+                                // offset 12 IS already a multiple of 2, so
+                                // NO padding needed here specifically
+};
+// sizeof would be 14 in THIS particular case -- but this is a coincidence
+// of THESE field sizes/order, not a guarantee, which is exactly why
+// __attribute__((packed)) is used explicitly rather than relied upon by luck.</pre>
+<p>Now compare a case where padding WOULD silently appear:</p>
+<pre>struct hypothetical_bad_layout {   // WITHOUT packed -- illustrative, not in this module's real code
+    uint8_t  a;      // offset 0
+    uint32_t b;      // needs 4-byte alignment -- compiler inserts
+                      // 3 PADDING bytes at offset 1,2,3 (invisible, unused)
+                      // b actually starts at offset 4
+};
+// sizeof = 8, NOT 5 (1 + 4) -- 3 invisible padding bytes were inserted</pre>
+<p>This second example is EXACTLY the failure mode
+<code>__attribute__((packed))</code> exists to prevent: if you tried to
+send this second struct's raw bytes over a network expecting a receiver
+to parse it per an RFC's exact byte layout, the receiver would
+misinterpret every field after the padding — reading garbage where
+<code>b</code>'s real value should be, because it would expect
+<code>b</code> at byte offset 1, not offset 4.</p>
+</div>
+
+<h3>3.2 — protocol_struct.c's ipv4_header, fully diagrammed byte by byte</h3>
+<pre>Offset  Field                Size   Value in this module's own code
+------  -------------------  -----  --------------------------------
+  0     version_ihl          1      0x45  (version 4, header length 5×4=20 bytes)
+  1     tos                  1      0x00
+  2-3   total_length         2      0x0028 (40, network byte order)
+  4-5   identification       2      0x1c46 (network byte order)
+  6-7   flags_frag_offset    2      0x4000 (network byte order)
+  8     ttl                  1      0x40 (64 decimal)
+  9     protocol             1      0x06 (TCP)
+ 10-11  checksum             2      0x0000 (left unset in this file)
+ 12-15  src_ip               4      192.0.2.10, as a 32-bit value
+ 16-19  dst_ip               4      192.0.2.20, as a 32-bit value
+------  -------------------  -----
+Total: 20 bytes, EXACTLY sizeof(struct ipv4_header) -- zero padding,
+confirmed by this module's own printf("sizeof(struct ipv4_header) = %zu
+(expected 20)") check.</pre>
+<p>Every single byte in this diagram corresponds EXACTLY to a specific,
+named field in the real IPv4 RFC (RFC 791) — this is the entire point:
+a packed C struct is a DIRECT, byte-for-byte machine-readable
+transcription of a protocol specification's own byte diagram (the kind
+of diagram you'd find in the actual RFC document itself).</p>
+
+<h2 id="sec4">4. Endianness — htons/htonl Traced Byte By Byte</h2>
+
+<h3>4.1 — What "byte order" even means, concretely</h3>
+<p>A multi-byte number (like the 16-bit <code>total_length</code> field,
+value 40) can be stored in memory in more than one valid byte
+ORDER. "Big-endian" stores the MOST significant byte FIRST (at the
+lowest address); "little-endian" stores the LEAST significant byte
+first. Both are internally consistent — the ambiguity only matters when
+two DIFFERENT machines (potentially using different native byte orders)
+need to exchange the same bytes and agree on how to interpret them.</p>
+
+<div class="scenario">
+<h4>Worked scenario: the number 40, in both byte orders, fully shown</h4>
+<pre>40 decimal = 0x0028 in hex (a 16-bit value)
+
+Big-endian storage (network byte order -- what actually goes on the wire):
+  byte[0] = 0x00   (the MOST significant byte, 0x00)
+  byte[1] = 0x28   (the LEAST significant byte, 0x28)
+
+Little-endian storage (what a typical x86/x86-64 CPU uses NATIVELY in memory):
+  byte[0] = 0x28   (the LEAST significant byte first)
+  byte[1] = 0x00   (the MOST significant byte second)</pre>
+<p>Both representations encode the SAME number (40) — they differ only in
+WHICH byte comes first in memory/on the wire. This is precisely why
+<code>protocol_struct.c</code> calls <code>htons(40)</code> rather than
+just assigning <code>40</code> directly: on a little-endian machine
+(virtually all consumer x86/x86-64/ARM hardware today), the raw in-memory
+representation of the integer 40 would place the bytes in LITTLE-endian
+order — but the IPv4 spec REQUIRES big-endian ("network byte order") on
+the wire. <code>htons()</code> ("host to network, short" — "short"
+meaning a 16-bit value) performs the actual byte-SWAP when the host is
+little-endian (and does nothing at all, a no-op, on a big-endian host —
+which is why the function exists at all: the SAME source code produces
+correct wire bytes regardless of which byte order the host CPU natively
+uses).</p>
+</div>
+
+<div class="why">
+<strong>Why is the standard called "network byte order" and not just
+"big-endian"?</strong> Because the terminology deliberately ties the
+CONCEPT (a specific, fixed byte order) to its PURPOSE (interoperability
+across a network of possibly-different-endianness machines) — any two
+machines, regardless of their own NATIVE/host byte order, can correctly
+exchange data as long as they both agree to convert to/from this one
+standard order at the network boundary. This is exactly the same
+"agree on ONE canonical format at the boundary, regardless of internal
+representation" principle Module 08's DNS wire format and Module 18's
+libpcap format both apply.
+</div>
+
+<h3>4.2 — htonl vs. htons — why two different functions</h3>
+<p><code>htons()</code> ("host to network SHORT") operates on 16-bit
+values; <code>htonl()</code> ("host to network LONG") operates on 32-bit
+values — <code>protocol_struct.c</code> uses <code>htonl(1000)</code>
+for the TCP header's 32-bit sequence number specifically because a
+16-bit swap function applied to a 32-bit value would swap the WRONG
+byte boundaries, producing a completely wrong result rather than an
+error — always match the swap function's bit-width to the field's
+actual size.</p>
+
+<h2 id="sec5">5. The Stack, In Complete Detail — What A "Stack Frame" Physically Is</h2>
+
+<h3>5.1 — The stack as a real, physical region of memory</h3>
+<p>Every running program has a dedicated region of its address space
+called THE STACK, used specifically for function calls' local
+variables and bookkeeping. It's called a "stack" because it grows and
+shrinks in LIFO (last-in-first-out) order — exactly like a physical
+stack of plates: calling a function PUSHES a new "stack frame" on top
+(reserving space for that function's local variables), and returning
+from a function POPS that frame off, instantly freeing that space for
+reuse by whatever gets called next.</p>
+
+<h3>5.2 — vulnerable_copy()'s actual stack frame, laid out concretely</h3>
+<p>When <code>main()</code> calls <code>vulnerable_copy()</code>, a new
+stack frame is pushed containing (roughly, compiler- and
+platform-dependent in exact details, but this ordering is representative
+of what actually happens on typical x86-64/gcc, WITHOUT the stack
+protector reordering discussed in Section 7):</p>
+<pre>Higher memory addresses
+    |
+    | [return address]      -- where to jump back to in main() when
+    |                          vulnerable_copy() finishes
+    | [saved base pointer]  -- main()'s own frame pointer, saved so
+    |                          it can be restored on return
+    | [adjacent_guard]      -- the 4-byte int, value 0x1234
+    | [small_buffer[7]]     -- the LAST byte of the 8-byte buffer
+    | [small_buffer[6]]
+    | ...
+    | [small_buffer[0]]     -- the FIRST byte of the 8-byte buffer
+    |
+Lower memory addresses  <- the stack GROWS DOWNWARD (toward lower
+                            addresses) on essentially all common
+                            architectures, meaning small_buffer sits
+                            at a LOWER address than adjacent_guard</pre>
+<p>The single most important fact this diagram reveals: <code>small_buffer</code>
+sits at a LOWER address than <code>adjacent_guard</code>, and writing
+PAST the end of <code>small_buffer</code> (via an oversized
+<code>strcpy()</code>) writes toward HIGHER addresses — directly toward,
+and then past, <code>adjacent_guard</code>, and eventually toward the
+saved base pointer and return address themselves. This is not a
+metaphor — this is the literal, physical reason a buffer overflow can
+corrupt a neighboring variable and, if it goes far enough, even the
+function's own return address.</p>
+
+<div class="brain">
+<strong>Brain power:</strong> if the stack "grows downward," why does
+writing PAST the end of a buffer corrupt data at HIGHER addresses,
+rather than lower ones? Because <code>strcpy()</code> writes FORWARD,
+byte by byte, starting at <code>small_buffer</code>'s own starting
+address and increasing — it has no concept of "the stack grows
+downward" at all; it simply keeps incrementing the destination address
+by one for each source byte until it hits a null terminator. Since
+<code>adjacent_guard</code> happens to sit at a HIGHER address than
+<code>small_buffer</code> in this frame's layout, that's the direction
+the overflow travels into.
+</div>
+
+<h2 id="sec6">6. The Buffer Overflow — Traced Byte By Byte, Twice</h2>
+
+<h3>6.1 — Trace 1: the UNPROTECTED build (<code>-fno-stack-protector</code>)</h3>
+<div class="scenario">
+<h4>Fully traced: strcpy(small_buffer, "AAAAAAAAAAAAAAAAAAAA") — 20 'A' characters into an 8-byte buffer</h4>
+<pre>small_buffer has room for exactly 8 bytes (indices 0-7).
+The source string has 20 'A' characters PLUS a null terminator = 21 bytes total.
+
+strcpy() copies byte by byte, with ZERO awareness of small_buffer's real size:
+
+  small_buffer[0] = 'A'   (0x41)
+  small_buffer[1] = 'A'
+  small_buffer[2] = 'A'
+  small_buffer[3] = 'A'
+  small_buffer[4] = 'A'
+  small_buffer[5] = 'A'
+  small_buffer[6] = 'A'
+  small_buffer[7] = 'A'   <- this is the LAST byte that legitimately belongs
+                             to small_buffer
+
+  -- everything below this line is OUT OF BOUNDS, but strcpy() keeps going --
+
+  [byte at small_buffer+8]  = 'A'   <- this address is adjacent_guard's
+  [byte at small_buffer+9]  = 'A'      first byte!
+  [byte at small_buffer+10] = 'A'
+  [byte at small_buffer+11] = 'A'   <- adjacent_guard is now FULLY
+                                        overwritten with 0x41414141
+  [byte at small_buffer+12] = 'A'   <- continues past adjacent_guard too,
+  ... (continues for remaining 'A's + null terminator)  now corrupting
+                                        the saved base pointer / other
+                                        stack metadata
+
+Result: adjacent_guard, which held 0x1234, now holds 0x41414141 --
+exactly the ASCII bytes for four 'A' characters read as a 32-bit
+integer. This module's own tutorial.html confirms this EXACT observed
+value during real testing.</pre>
+</div>
+
+<h3>6.2 — Trace 2: the PROTECTED build (default gcc stack protector)</h3>
+<p>With the stack protector active, gcc does two things this module's
+own real testing confirmed empirically: it inserts a hidden "canary"
+value between the buffer and the return address (Section 7 explains the
+mechanism), AND — this is the part that surprised this module's own
+build — it REORDERS local variables specifically to place buffers
+CLOSER to the canary/return address and scalar variables like
+<code>adjacent_guard</code> FURTHER AWAY, specifically to defeat exactly
+the kind of "corrupt the neighboring variable" demonstration this module
+originally intended.</p>
+<div class="scenario">
+<h4>What actually happened in the protected build, per this module's own confirmed testing</h4>
+<p><code>adjacent_guard</code> printed UNCHANGED (<code>0x1234</code>)
+both before AND after the overflow — the overflow's bytes went
+somewhere else in the reordered frame, hit the (differently-positioned)
+canary value instead, and the program detected the corrupted canary and
+called <code>abort()</code>, printing
+<code>*** stack smashing detected ***: terminated</code>. The
+corruption still genuinely happened — it just landed on the compiler's
+own hidden protection value instead of the visible
+<code>adjacent_guard</code> variable, which is EXACTLY the intended
+effect of the mitigation.</p>
+</div>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "A student expects a stack
+buffer overflow to always corrupt the very next declared variable in
+source-code order. Explain why this assumption is unreliable on a
+modern compiler." Modern compilers (gcc, clang, by default) actively
+REORDER local stack variables specifically as a security mitigation —
+placing buffers as close as possible to the stack canary/return address
+and scalar variables further away, precisely to minimize the chance an
+overflow reaches something the program actually uses for a security-
+relevant decision before it's detected. Source-code declaration order is
+NOT a reliable predictor of actual memory layout once this optimization
+is active — this module's own real, observed testing (Section 6.2)
+demonstrates exactly this: <code>adjacent_guard</code>, declared
+immediately after <code>small_buffer</code> in the source, was
+NOT the first thing corrupted once the compiler's reordering was active.
+</div>
+
+<h2 id="sec7">7. Stack Canaries — What They Detect And How</h2>
+
+<p>A "canary" (named after the historical practice of caged canaries in
+coal mines, whose deaths from gas before humans noticed served as an
+early-warning signal) is a specific, hard-to-guess value the compiler
+inserts BETWEEN a stack buffer and the critical data (saved base
+pointer, return address) an overflow would otherwise reach.</p>
+
+<h3>7.1 — The mechanism, precisely</h3>
+<ol>
+<li>At the START of a function that has a stack buffer, the compiler
+inserts code to write a canary value (typically derived from a
+per-process random value chosen at program startup, making it hard for
+an attacker to predict or guess in advance) into a specific stack
+location, right before the return address.</li>
+<li>At the END of that function, right before actually returning, the
+compiler inserts code to RE-READ that same stack location and compare
+it against the expected canary value.</li>
+<li>If they DON'T match, something between steps 1 and 2 overwrote the
+canary — the ONLY way this can happen in normal operation is a buffer
+overflow that wrote PAST its intended space and reached the canary's
+position. The generated code calls <code>abort()</code> immediately
+(triggering <code>SIGABRT</code>, the signal Section 9's code comment
+discusses) rather than allowing the function to actually return using a
+potentially-also-corrupted return address.</li>
+</ol>
+
+<div class="why">
+<strong>Why does a corrupted canary specifically imply the RETURN
+ADDRESS might ALSO be corrupted, given the canary sits BETWEEN the
+buffer and the return address?</strong> Because <code>strcpy()</code>
+(and buffer overflows generally) write FORWARD, byte by byte, with no
+way to selectively "skip over" the canary and land only on data further
+along — if the overflow was long enough to reach and corrupt the canary,
+and the return address sits at an EVEN HIGHER address (further in the
+same forward-writing direction), a sufficiently long overflow would have
+kept going and corrupted the return address too. Detecting the canary's
+corruption is used as an EARLY-WARNING PROXY specifically because
+checking the actual return address directly, after it's already been
+used to jump execution, would be too late — the canary check happens
+BEFORE the vulnerable return actually executes.
+</div>
+
+<h2 id="sec8">8. strcpy vs. strncpy vs. snprintf — Precisely</h2>
+
+<table>
+<tr><th>Function</th><th>Bounds-aware?</th><th>Behavior</th></tr>
+<tr><td><code>strcpy(dst, src)</code></td><td>NO</td><td>Copies bytes from <code>src</code> until it finds a null terminator, with ZERO knowledge of how large <code>dst</code> actually is. This is exactly the bug this module demonstrates — the function has no way to know or check "is there actually room."</td></tr>
+<tr><td><code>strncpy(dst, src, n)</code></td><td>Partially</td><td>Copies AT MOST <code>n</code> bytes — genuinely prevents the overflow. But has a real, frequently-tripped-over gotcha: if <code>src</code> is <code>n</code> bytes or longer, <code>strncpy()</code> does NOT null-terminate <code>dst</code> automatically — the caller must do so manually (exactly what this module's Exercise 1 asks you to add: "null-terminate manually").</td></tr>
+<tr><td><code>snprintf(dst, n, "%s", src)</code></td><td>Yes, fully</td><td>Copies at most <code>n-1</code> bytes AND always null-terminates correctly (reserving the last byte specifically for the terminator) — generally considered the safest, most modern choice for this kind of copy, precisely because it has no equivalent gotcha to strncpy's missing-terminator trap.</td></tr>
+</table>
+
+<div class="pitfall">
+<strong>Common mistake when "fixing" a strcpy() bug: switching to
+strncpy() but forgetting the manual null-termination step.</strong>
+<code>strncpy(small_buffer, input, sizeof(small_buffer))</code> alone is
+STILL potentially unsafe — if <code>input</code> is 8 or more bytes
+long, <code>small_buffer</code> ends up completely full of copied bytes
+with NO null terminator anywhere, meaning any subsequent code that
+treats <code>small_buffer</code> as a normal C string (searching for its
+end via the null terminator, like <code>printf("%s", small_buffer)</code>
+does) will keep reading PAST the buffer's end looking for a terminator
+that isn't there — a DIFFERENT out-of-bounds READ bug, distinct from but
+just as real as the original overflow. The correct fix (this module's
+own Exercise 1) copies at most <code>sizeof(small_buffer) - 1</code>
+bytes, reserving the LAST byte specifically to be manually set to
+<code>'\0'</code>.
+</div>
+
+<h2 id="sec9">9. Full Code Walkthrough — protocol_struct.c</h2>
+
+<h3>9.1 — print_hex(), and the void pointer pattern</h3>
+<pre>void print_hex(const char *label, const void *data, size_t len) {
+    const unsigned char *bytes = (const unsigned char *)data;</pre>
+<p><code>const void *data</code> accepts a pointer to ANY type at all —
+<code>void *</code> is C's "I don't know or care what type this points
+to" pointer type, which is why <code>print_hex()</code> can be called
+with <code>&eth</code>, <code>&ip</code>, or <code>&tcp</code> — three
+completely different struct types — through this ONE function. Inside
+the function, the FIRST thing it does is CAST that generic pointer to
+<code>const unsigned char *</code> — because you cannot directly index
+or dereference a <code>void *</code> (the compiler doesn't know its
+size), but once cast to a BYTE pointer specifically, indexing byte by
+byte (<code>bytes[i]</code>) becomes valid, and, per Section 2.2's
+lesson, advances exactly 1 byte per index step (since
+<code>sizeof(unsigned char) == 1</code> always, by definition).</p>
+
+<h3>9.2 — The struct field assignments, matched to Section 3's diagram</h3>
+<pre>ip.total_length = htons(40);</pre>
+<p>Directly ties Section 4's endianness lesson to real code: the LOGICAL
+value is 40 (a plain host-native integer at this point in the source),
+and <code>htons()</code> converts it to the correct ON-THE-WIRE byte
+order before it's stored into the struct field — meaning the RAW BYTES
+that end up in memory at <code>ip.total_length</code>'s 2-byte location
+are big-endian, ready to be transmitted or compared byte-for-byte
+against Module 02's Python output, exactly as this module's own
+tutorial.html Step 1 confirms.</p>
+
+<h2 id="sec10">10. Full Code Walkthrough — buffer_overflow_demo.c</h2>
+
+<h3>10.1 — setvbuf(), and why it was necessary</h3>
+<pre>setvbuf(stdout, NULL, _IONBF, 0);</pre>
+<p>This line exists because of a REAL bug this module's own build hit:
+<code>printf()</code>'s output isn't necessarily written to your
+terminal immediately — by default, stdout is often LINE-buffered (when
+connected to a terminal) or fully BUFFERED (when redirected to a file or
+pipe), meaning output waits in an internal buffer until either a newline
+is written (line-buffered) or the buffer fills up (full buffering) or
+the program exits NORMALLY. When the stack protector calls
+<code>abort()</code> (Section 7), the process terminates via a SIGNAL
+(SIGABRT) — an ABNORMAL exit that does NOT run the normal
+end-of-program cleanup that would otherwise flush any still-buffered
+output. Without <code>setvbuf(..., _IONBF, 0)</code> ("IO No
+Buffering," buffer size 0), every <code>printf()</code> call in the
+protected build's output was silently LOST — the program's actual
+behavior was correct the whole time, but nothing was visible, purely
+because of an unrelated I/O buffering detail. This is a genuinely
+common, real-world debugging trap: "my program isn't doing X" often
+actually means "my program did X, but the evidence never got flushed
+before the process ended."</p>
+
+<h3>10.2 — The if/else after the copy, and why BOTH branches matter</h3>
+<pre>if (adjacent_guard != 0x1234) {
+    printf("  >>> adjacent_guard was CORRUPTED by the overflow. <<<\n");
+} else {
+    printf("  adjacent_guard is unchanged (input fit, or your compiler's\n");
+    printf("  stack layout put something else adjacent -- see DECISIONS.md)\n");
+}</pre>
+<p>This code is written to give a MEANINGFUL result either way — not
+just for the unprotected build (where <code>adjacent_guard</code> IS
+corrupted, per Section 6.1) but ALSO for the protected build (where, per
+Section 6.2's real finding, it ISN'T corrupted, because the compiler
+reordered variables and redirected the corruption elsewhere). The
+<code>else</code> branch's comment explicitly acknowledges the
+possibility that stack layout could differ — this is honest, defensive
+documentation of a REAL platform/compiler-dependent behavior, not a bug
+being hidden.</p>
+
+<h2 id="sec11">11. Troubleshooting and Common Confusions</h2>
+
+<div class="scenario">
+<h4>Confusion: "If I run the protected build multiple times, will adjacent_guard always print exactly 0x1234, every single time?"</h4>
+<p>On THIS module's specific compiler/platform combination, yes,
+consistently — but this is NOT guaranteed universally. Stack layout and
+variable reordering decisions are made by the SPECIFIC compiler version
+you're using, and different compilers (or even different optimization
+levels of the same compiler) could make different reordering choices.
+This is precisely why the tutorial frames the observed
+<code>0x1234</code>-unchanged result as "confirmed during this module's
+build" rather than as an absolute, universal law of C — it's an
+empirical finding about THIS specific tested environment, one you should
+verify for yourself rather than assume holds everywhere.</p>
+</div>
+
+<div class="scenario">
+<h4>Confusion: "gcc -Wall didn't warn me about the dangerous strcpy() call — shouldn't a good compiler catch this?"</h4>
+<p><code>-Wall</code> enables a broad, commonly-useful set of warnings,
+but detecting "this specific strcpy call MIGHT overflow this specific
+buffer" in general requires genuinely sophisticated data-flow analysis
+that basic compiler warnings don't perform (though some compilers DO
+offer additional, stricter warning flags, like
+<code>-Wstringop-overflow</code> on newer gcc versions, that can catch
+SOME cases where the buffer and the source are both compile-time-visible
+enough to analyze). The stack protector (Section 7) is a RUNTIME
+mitigation specifically because reliably catching every possible overflow
+at COMPILE time, for arbitrary code, is not generally solvable — this is
+directly related to the halting problem's undecidability, a genuinely
+deep computer science result, not merely "the compiler didn't try hard
+enough."</p>
+</div>
+
+<h2 id="sec12">12. Comprehensive Recap and Self-Test</h2>
+
+<div class="recap">
+<strong>Before moving to Module 00c, you should be able to, from memory,
+with no notes:</strong>
+<ul>
+<li>Explain what a pointer IS at the memory level (an address, stored as
+a value) and demonstrate that array indexing is pointer arithmetic,
+using real byte-offset math.</li>
+<li>Draw the byte-offset diagram for any of this module's packed
+structs, labeling every field's exact byte range.</li>
+<li>Explain why <code>__attribute__((packed))</code> is necessary,
+using a concrete example of what padding WOULD look like without it.</li>
+<li>Convert a small number (like 40 or 1000) into both its big-endian
+and little-endian byte representations, by hand.</li>
+<li>Draw <code>vulnerable_copy()</code>'s stack frame layout and trace,
+byte by byte, where an oversized <code>strcpy()</code> call's excess
+bytes actually land.</li>
+<li>Explain what a stack canary detects, when the check happens, and
+why a corrupted canary implies the return address might also be at
+risk.</li>
+<li>State the precise, non-obvious gotcha with <code>strncpy()</code>
+that <code>snprintf()</code> avoids.</li>
+</ul>
+</div>
+
+<p>If any of the above feels shaky, re-read that section before
+continuing — Module 00c shifts from memory-layout theory to Linux
+system administration, but the same "know exactly what's actually
+happening underneath a convenient abstraction" habit carries directly
+forward.</p>
+
+</body>
+</html>

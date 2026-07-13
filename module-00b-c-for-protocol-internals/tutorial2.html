@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Module 00b — Deep Theory</title>
+<style>
+  body { font-family: Georgia, "Times New Roman", serif; max-width: 840px; margin: 40px auto; padding: 0 24px; line-height: 1.65; color: #1a1a1a; }
+  h1 { font-family: system-ui, sans-serif; border-bottom: 4px solid #222; padding-bottom: 10px; }
+  h2 { font-family: system-ui, sans-serif; margin-top: 44px; border-left: 6px solid #444; padding-left: 12px; }
+  h3 { font-family: system-ui, sans-serif; margin-top: 28px; color: #333; }
+  code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+  code { background: #eee; padding: 1px 6px; border-radius: 3px; }
+  pre { background: #111; color: #d4d4d4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 0.92rem; }
+  .brain { background: #eef2ff; border-left: 5px solid #4c51bf; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .exam { background: #fff0f0; border-left: 5px solid #c0392b; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  .why { background: #f0fff4; border-left: 5px solid #27ae60; padding: 12px 16px; margin: 18px 0; font-family: system-ui, sans-serif; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-family: system-ui, sans-serif; font-size: 0.9rem; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f4f4f4; }
+  nav a { margin-right: 16px; font-family: system-ui, sans-serif; }
+</style>
+</head>
+<body>
+
+<nav><a href="tutorial.html">Quick Tutorial</a> <a href="tutorial3.html">Exam Practice</a> <a href="tutorial4.html">Complete Mastery Guide →</a></nav>
+
+<h1>Module 00b — Deep Theory: Memory, Layout, and Undefined Behavior</h1>
+
+<h2>1. The Stack Frame, Precisely</h2>
+
+<p>Every function call in C allocates a "stack frame" — a region of the
+call stack holding that function's local variables, saved registers, and
+bookkeeping needed to return control to the caller. A simplified layout
+(exact details vary by architecture/compiler, but the CONCEPT is
+universal):</p>
+
+<pre>Higher addresses
+  +------------------------+
+  | caller's frame...      |
+  +------------------------+
+  | return address         |  <- where execution resumes after this function returns
+  +------------------------+
+  | saved frame pointer     |  <- caller's frame pointer, saved so it can be restored
+  +------------------------+
+  | [stack canary]          |  <- if stack protection is enabled (buffer_overflow_demo.c)
+  +------------------------+
+  | local variables...      |  <- small_buffer, adjacent_guard, etc.
+  +------------------------+
+Lower addresses (stack grows DOWNWARD on most architectures)</pre>
+
+<p>This is exactly why a buffer overflow is dangerous beyond just
+corrupting a neighboring variable: on most architectures, the stack
+grows toward LOWER addresses, but writing PAST the end of a buffer moves
+toward HIGHER addresses — directly toward the saved frame pointer and,
+beyond that, the RETURN ADDRESS. This is why <code>overflow_unprotected</code>
+eventually segfaulted: the 20-byte write into an 8-byte buffer went far
+enough to corrupt not just <code>adjacent_guard</code> but the function's
+own return address, so when <code>vulnerable_copy()</code> tried to
+return, the CPU jumped to a garbage (attacker-influenced, in a real
+attack) address instead of back into <code>main()</code>.</p>
+
+<div class="exam">
+<strong>Comprehensive exam framing:</strong> "Explain, at the memory
+layout level, why a stack buffer overflow can lead to arbitrary code
+execution, not just data corruption." Answer: because the return address
+— the value that determines where the CPU resumes execution after the
+current function returns — is typically stored on the stack, ABOVE (at a
+higher address than) local buffers. An overflow large enough to reach
+that far can overwrite the return address with an attacker-chosen value,
+causing the CPU to jump to and execute code at that address when the
+function returns — this is the actual mechanism behind classic
+"stack smashing" exploits, though this module's demo deliberately stops
+at OBSERVING corruption, not weaponizing it.
+</div>
+
+<h3>Why GCC's stack protector reorders variables (not just adds a canary)</h3>
+<p>A canary alone (a secret value placed between locals and the return
+address, checked before returning) would catch return-address corruption
+— but it does nothing to protect a scalar local variable that happens to
+sit BETWEEN a buffer and the canary. GCC's <code>-fstack-protector</code>
+(the default in modern GCC/Clang builds) additionally reorders locals so
+that arrays/buffers are placed at HIGHER addresses within the frame,
+closer to the canary, and scalar variables are placed at LOWER addresses,
+farther from any buffer that could overflow into them. This is exactly
+why <code>adjacent_guard</code> stayed <code>0x1234</code> in the
+protected build — the compiler moved it out of the overflow's path,
+confirmed empirically during this module's own testing.</p>
+
+<h2>2. Endianness, Formally (and Why Module 02's htons() Exists)</h2>
+
+<p>A multi-byte value (say, the 16-bit number 0x1234) can be stored in
+memory two ways:</p>
+<table>
+<tr><th>Order</th><th>Byte at lower address</th><th>Byte at higher address</th><th>Used by</th></tr>
+<tr><td>Big-endian ("network byte order")</td><td>0x12 (most significant)</td><td>0x34 (least significant)</td><td>Every multi-byte network protocol field (IP addresses, ports, TCP sequence numbers)</td></tr>
+<tr><td>Little-endian</td><td>0x34 (least significant)</td><td>0x12 (most significant)</td><td>x86/x86-64 CPUs' native in-memory integer representation</td></tr>
+</table>
+
+<p>This mismatch — most desktop/server CPUs are little-endian internally,
+but every network protocol specifies big-endian on the wire — is EXACTLY
+why <code>htons()</code>/<code>htonl()</code> ("host to network, short/long")
+exist: they convert a value from whatever the CPU's native byte order is
+to the byte order the network expects, and are no-ops on a big-endian
+machine (rare today, but the functions exist to make code portable
+regardless). Module 02's Python code used <code>struct.pack("!H", ...)</code>
+— the <code>!</code> character means "network byte order," doing the
+exact same conversion Python's way.</p>
+
+<div class="brain">
+<strong>Brain power:</strong> if you forgot to call <code>htons()</code>
+before writing a 16-bit port number into a packet header on a
+little-endian machine, what would actually happen? The two bytes would be
+written in the WRONG order — port 8080 (0x1F90) would be sent as bytes
+<code>90 1f</code> instead of the correct <code>1f 90</code>. The
+receiving end (following the network-byte-order convention) would
+interpret this as port <code>0x901F</code> = 36895, a completely
+different, wrong port. This is a real, common bug class in raw
+network programming — and exactly why every protocol header field in
+this course's Python code used explicit byte-order format characters
+(<code>!</code>, <code>&gt;</code>) rather than relying on defaults.
+</div>
+
+<h2>3. Undefined Behavior: C's Sharpest Edge</h2>
+
+<p><code>buffer_overflow_demo.c</code>'s <code>strcpy()</code> overflow
+is not just "a bug" in the way a Python <code>IndexError</code> is a bug
+— it is <strong>undefined behavior</strong>, a specific, formal category
+in the C standard meaning: once this happens, the C standard places
+ABSOLUTELY NO CONSTRAINTS on what the program does next. Not "it will
+crash." Not "it will corrupt adjacent memory in a predictable way." The
+standard permits literally any outcome, including ones that look
+completely fine until they don't (this is why UB bugs are notoriously
+hard to track down — a program with UB can appear to work correctly for
+months, then fail mysteriously after an unrelated compiler upgrade or
+optimization flag change, because the compiler was always free to assume
+UB never happens and optimize accordingly).</p>
+
+<div class="why">
+<strong>Why does C allow this at all, rather than mandating safe,
+defined behavior for every operation?</strong> Performance and
+historical context. C was designed in the early 1970s to be a thin
+abstraction over the hardware, for writing an operating system (Unix)
+that needed direct, fast, unencumbered access to memory. Every bounds
+check, every safety guarantee, costs CPU cycles. C's design philosophy
+trusts the programmer completely and pays zero runtime cost for that
+trust — which is exactly why kernels, embedded systems, and
+performance-critical networking code are still frequently written in C
+(or C++, or increasingly Rust, which provides memory safety WITHOUT
+C's runtime-cost tradeoff, via compile-time ownership checking) despite
+the well-known danger.
+</div>
+
+<h2>4. Struct Padding and Alignment, Beyond `packed`</h2>
+
+<p>Without <code>__attribute__((packed))</code>, here's what the compiler
+does and why. Consider:</p>
+<pre>struct example {
+    uint8_t  a;   /* 1 byte */
+    uint32_t b;   /* 4 bytes -- but wants to start at an address divisible by 4 */
+};</pre>
+<p>The compiler inserts 3 padding bytes after <code>a</code> so that
+<code>b</code> starts at offset 4 (not offset 1), because most CPU
+architectures read a 4-byte value fastest — sometimes require it
+entirely — when that value starts at an address divisible by its own
+size (its "natural alignment"). <code>sizeof(struct example)</code>
+without <code>packed</code> would report 8, not 5, because of this
+invisible padding. This is precisely the mismatch that would silently
+corrupt every protocol header this course builds if <code>packed</code>
+were omitted — the compiler's "helpful" default optimization actively
+works against a fixed wire-format specification.</p>
+
+<h2>Summary: what this module unlocks</h2>
+<table>
+<tr><th>Concept here</th><th>Used directly in</th></tr>
+<tr><td>Packed structs, sizeof, byte layout</td><td>Module 02 (Python struct.pack), Module 18 (pcap format)</td></tr>
+<tr><td>Pointers, buffer-passing semantics</td><td>Every Module 07/08 socket program's underlying C library calls (recv/send)</td></tr>
+<tr><td>Endianness (htons/ntohs)</td><td>Module 02's struct format characters, Module 05's routing byte fields</td></tr>
+<tr><td>Stack frame layout, buffer overflows</td><td>Module 16's vulnerability assessment (why certain CVEs are memory-safety bugs), general security literacy</td></tr>
+<tr><td>Undefined behavior</td><td>Explains why C/C++ CVEs are so common and so hard to fully eliminate through testing alone</td></tr>
+</table>
+
+<p>Continue to <a href="tutorial3.html">tutorial3.html</a> for
+comprehensive-exam-style practice questions.</p>
+
+</body>
+</html>
