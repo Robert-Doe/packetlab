@@ -7,3 +7,5 @@ dist/
 .claude/
 *.log
 .ipynb_checkpoints/
+webapp/node_modules/
+webapp/dist/
