@@ -16,8 +16,8 @@ app.innerHTML = `
   <div class="hero">
     <h1>Packet Builder &amp; Subnet Calculator</h1>
     <p class="tagline">
-      Two real tools ported straight from the Packetlab course's own
-      <code>subnet_calc</code> and <code>layer_builder</code> modules &mdash;
+      Two tools ported straight from the Packetlab course's own
+      <code>subnet_calc</code> and <code>layer_builder</code> modules:
       the actual bitwise arithmetic and byte layout, running client-side.
     </p>
   </div>
