@@ -1,17 +1,17 @@
 /**
- * packet.ts — TypeScript/browser port of
+ * packet.ts, TypeScript/browser port of
  * module-02-osi-tcpip-model/layer_builder.js.
  *
  * The original uses Node's Buffer (writeUIntBE / readUInt16BE etc.) to lay
  * out real Ethernet + IPv4 + TCP header bytes in network byte order
  * (big-endian). Buffer doesn't exist in the browser, so this port uses
- * DataView over a plain Uint8Array instead — a different API for the exact
+ * DataView over a plain Uint8Array instead, a different API for the exact
  * same job, matching the original module's own note about struct.pack vs.
  * Buffer.writeUIntBE being "two different APIs for the exact same job."
  *
  * The header layouts, field widths, byte order, and the IPv4 checksum
  * algorithm (RFC 1071 one's-complement sum) are copied field-for-field
- * from the original — this produces byte-identical output for the same
+ * from the original, this produces byte-identical output for the same
  * inputs, not a picture of the algorithm.
  */
 

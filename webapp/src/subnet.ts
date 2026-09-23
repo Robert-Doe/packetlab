@@ -1,5 +1,5 @@
 /**
- * subnet.ts — TypeScript port of module-04-ip-addressing-subnetting/subnet_calc.js
+ * subnet.ts, TypeScript port of module-04-ip-addressing-subnetting/subnet_calc.js
  * (itself a JS port of subnet_calc.py). Same bit-math approach: every IPv4
  * address becomes a 32-bit unsigned integer, and every network/broadcast/
  * host-range computation is plain bitwise AND/OR/NOT against a mask built
@@ -7,7 +7,7 @@
  *
  * JS/TS bitwise operators work on SIGNED 32-bit ints internally, so `>>> 0`
  * (unsigned right shift by zero) is used throughout to force results back
- * into the unsigned range — the same porting gotcha called out in the
+ * into the unsigned range, the same porting gotcha called out in the
  * original module's DECISIONS.md.
  */
 
